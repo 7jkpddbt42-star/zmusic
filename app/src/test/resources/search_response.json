@@ -1,0 +1,24 @@
+{
+  "result": {
+    "songCount": 306,
+    "songs": [
+      {
+        "id": 1357375695,
+        "name": "海阔天空",
+        "dt": 239560,
+        "ar": [{ "id": 11127, "name": "Beyond" }],
+        "al": { "id": 78372827, "name": "华纳廿三周年纪念精选系列 - Beyond", "picUrl": "http://p4.music.126.net/q6cm6Pk70YArijk1_QDoEg==/109951163984013003.jpg" },
+        "fee": 1
+      },
+      {
+        "id": 1357374736,
+        "name": "海阔天空",
+        "dt": 239560,
+        "ar": [{ "id": 11127, "name": "Beyond" }],
+        "al": { "id": 78372154, "name": "华纳超极品音色系列", "picUrl": "http://p3.music.126.net/qnQ93WnZHACVvIM14c4sAQ==/109951163984007061.jpg" },
+        "fee": 8
+      }
+    ]
+  },
+  "code": 200
+}
