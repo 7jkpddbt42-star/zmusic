@@ -9,4 +9,7 @@ data class TransportResponse(val code: Int, val body: String)
  */
 interface HttpTransport {
     fun post(url: String, body: String, headers: Map<String, String>): TransportResponse
+
+    /** 备用源走 GET（协议与 NetEaseCloudMusicApi 一致）。 */
+    fun get(url: String, headers: Map<String, String>): TransportResponse
 }

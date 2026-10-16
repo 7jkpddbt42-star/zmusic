@@ -8,6 +8,7 @@ internal fun Throwable.toUserMessage(): String = when (this) {
     is SourceError.Api -> "音源暂时不可用，请稍后重试"
     is SourceError.Parse -> "解析失败，可能接口已变更"
     is SourceError.Unplayable -> "这首歌暂无版权或需要登录"
+    is SourceError.NotConfigured -> "未配置备用音源"
     is SourceError.NotImplementedYet -> "该功能尚未实现"
     else -> "出错了"
 }

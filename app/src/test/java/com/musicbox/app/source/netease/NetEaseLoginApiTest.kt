@@ -15,6 +15,8 @@ class NetEaseLoginApiTest {
             lastUrl = url; lastBody = body; lastHeaders = headers
             return response
         }
+        override fun get(url: String, headers: Map<String, String>): TransportResponse =
+            throw UnsupportedOperationException("NetEaseLoginApi 只用 post")
     }
 
     @Test

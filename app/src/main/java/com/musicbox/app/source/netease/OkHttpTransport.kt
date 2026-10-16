@@ -27,4 +27,16 @@ class OkHttpTransport(
             return TransportResponse(response.code, response.body.string())
         }
     }
+
+    override fun get(url: String, headers: Map<String, String>): TransportResponse {
+        val request = Request.Builder()
+            .url(url)
+            .get()
+            .apply { headers.forEach { (key, value) -> addHeader(key, value) } }
+            .build()
+
+        client.newCall(request).execute().use { response ->
+            return TransportResponse(response.code, response.body.string())
+        }
+    }
 }

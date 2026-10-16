@@ -9,7 +9,9 @@ import com.musicbox.app.data.SessionStore
 import com.musicbox.app.data.SettingsRepository
 import com.musicbox.app.data.SharedPrefsKeyValueStore
 import com.musicbox.app.player.NetworkMonitor
+import com.musicbox.app.source.FailoverProvider
 import com.musicbox.app.source.MusicProvider
+import com.musicbox.app.source.failover.FallbackProvider
 import com.musicbox.app.source.netease.NetEaseLoginApi
 import com.musicbox.app.source.netease.NetEaseHeader
 import com.musicbox.app.source.netease.NetEaseProvider
@@ -55,12 +57,20 @@ class AppContainer(context: Context) {
 
     val loginApi: NetEaseLoginApi = NetEaseLoginApi(OkHttpTransport(), deviceId)
 
-    val provider: MusicProvider = NetEaseProvider(
+    private val netEaseProvider: MusicProvider = NetEaseProvider(
         transport = OkHttpTransport(),
         deviceId = deviceId,
         session = { sessionStore.session.value },
         appLog = log,
     )
+
+    private val fallbackProvider: MusicProvider = FallbackProvider(
+        transport = OkHttpTransport(),
+        baseUrl = { settings.fallbackBaseUrl.value },
+    )
+
+    /** UI 侧统一用这个：主源优先，主源临时失效时自动试一次备用源。 */
+    val provider: MusicProvider = FailoverProvider(netEaseProvider, fallbackProvider)
 
     private fun filesDir(name: String): File = File(appContext.filesDir, name)
 

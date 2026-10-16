@@ -25,6 +25,10 @@ class NetEaseProviderTest {
             lastHeaders = headers
             return response
         }
+
+        override fun get(url: String, headers: Map<String, String>): TransportResponse {
+            throw UnsupportedOperationException("NetEaseProvider 只用 post")
+        }
     }
 
     private fun fixtureBody(): String =
