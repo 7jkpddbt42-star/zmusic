@@ -1,6 +1,7 @@
 package com.musicbox.app.ui.player
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -44,6 +45,7 @@ internal fun PlayerScreen(
     onSeek: (Long) -> Unit,
     onCycleMode: () -> Unit,
     onOpenQueue: () -> Unit,
+    onOpenLyric: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     BackHandler(onBack = onCollapse)
@@ -67,8 +69,14 @@ internal fun PlayerScreen(
             Spacer(modifier = Modifier.height(24.dp))
             Artwork(
                 url = state.artworkUrl,
-                modifier = Modifier.fillMaxWidth(0.78f).aspectRatio(1f).clip(RoundedCornerShape(16.dp)),
+                modifier = Modifier
+                    .fillMaxWidth(0.78f)
+                    .aspectRatio(1f)
+                    .clip(RoundedCornerShape(16.dp))
+                    .clickable(onClick = onOpenLyric),
             )
+            Spacer(modifier = Modifier.height(10.dp))
+            TextButton(onClick = onOpenLyric) { Text("歌词") }
 
             Spacer(modifier = Modifier.height(28.dp))
             Text(

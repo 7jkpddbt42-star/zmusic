@@ -29,6 +29,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.musicbox.app.ui.MusicBoxTheme
+import com.musicbox.app.ui.lyric.LyricScreen
+import com.musicbox.app.ui.lyric.LyricViewModel
 import com.musicbox.app.ui.player.NowPlayingBar
 import com.musicbox.app.ui.player.PlaybackConnection
 import com.musicbox.app.ui.player.PlayerScreen
@@ -68,19 +70,31 @@ private fun MusicBoxApp(container: AppContainer) {
     val playerVm: PlayerViewModel = viewModel(
         factory = viewModelFactory { initializer { PlayerViewModel(container.provider, connection) } },
     )
+    val lyricVm: LyricViewModel = viewModel(
+        factory = viewModelFactory { initializer { LyricViewModel(container.provider) } },
+    )
 
     val searchState by searchVm.state.collectAsStateWithLifecycle()
     val playState by playerVm.state.collectAsStateWithLifecycle()
     val mode by playerVm.mode.collectAsStateWithLifecycle()
     val message by playerVm.message.collectAsStateWithLifecycle()
+    val lyricState by lyricVm.state.collectAsStateWithLifecycle()
+    val showTranslation by lyricVm.showTranslation.collectAsStateWithLifecycle()
+    val showRomaji by lyricVm.showRomaji.collectAsStateWithLifecycle()
 
     val snackbarHostState = remember { SnackbarHostState() }
     var showPlayer by remember { mutableStateOf(false) }
+    var showLyric by remember { mutableStateOf(false) }
     var showQueue by remember { mutableStateOf(false) }
 
     // 切歌 → 搜索列表高亮跟随
     LaunchedEffect(playState.currentSongId) {
         searchVm.onNowPlayingChanged(playState.currentSongId)
+    }
+
+    // 切歌 → 拉歌词（失败不影响播放）
+    LaunchedEffect(playState.currentSongId) {
+        lyricVm.load(playState.currentSongId)
     }
 
     // 一次性提示
@@ -117,7 +131,10 @@ private fun MusicBoxApp(container: AppContainer) {
         bottomBar = {
             NowPlayingBar(
                 state = playState,
-                onExpand = { showPlayer = true },
+                onExpand = {
+                    showLyric = false
+                    showPlayer = true
+                },
                 onTogglePlay = playerVm::togglePlay,
             )
         },
@@ -132,7 +149,20 @@ private fun MusicBoxApp(container: AppContainer) {
         )
     }
 
-    if (showPlayer) {
+    if (showPlayer && showLyric) {
+        LyricScreen(
+            state = lyricState,
+            source = connection,
+            title = playState.title,
+            artist = playState.artist,
+            showTranslation = showTranslation,
+            showRomaji = showRomaji,
+            onToggleTranslation = lyricVm::toggleTranslation,
+            onToggleRomaji = lyricVm::toggleRomaji,
+            onSeek = playerVm::seekTo,
+            onCollapse = { showLyric = false },
+        )
+    } else if (showPlayer) {
         PlayerScreen(
             state = playState,
             modeLabel = mode.label,
@@ -143,6 +173,7 @@ private fun MusicBoxApp(container: AppContainer) {
             onSeek = playerVm::seekTo,
             onCycleMode = playerVm::cyclePlayMode,
             onOpenQueue = { showQueue = true },
+            onOpenLyric = { showLyric = true },
         )
     }
 
