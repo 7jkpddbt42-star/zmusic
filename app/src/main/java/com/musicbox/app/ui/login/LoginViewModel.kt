@@ -1,0 +1,119 @@
+package com.musicbox.app.ui.login
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.musicbox.app.data.SessionStore
+import com.musicbox.app.source.netease.LoginApi
+import com.musicbox.app.source.netease.QrPollResult
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+
+/** 扫码登录界面状态。 */
+sealed interface LoginUiState {
+    data object Idle : LoginUiState
+    /** 正在申请二维码。 */
+    data object Loading : LoginUiState
+    /** 二维码已就绪，等待扫码。 */
+    data class Waiting(val qrContent: String) : LoginUiState
+    /** 已扫码，等待手机确认。 */
+    data object Scanned : LoginUiState
+    /** 二维码过期，可点"刷新"。 */
+    data object Expired : LoginUiState
+    /** 登录成功。 */
+    data class Success(val nickname: String?) : LoginUiState
+    /** 出错（网络/接口）。 */
+    data class Failed(val message: String) : LoginUiState
+}
+
+/**
+ * 扫码登录状态机。
+ * 流程：createQrKey → Waiting → 每 2s 轮询 → Scanned → Success。
+ * 二维码过期（800）→ 自动重新取 key。轮询失败不清空二维码，等下一次轮询自愈。
+ */
+class LoginViewModel(
+    private val api: LoginApi,
+    private val sessionStore: SessionStore,
+    private val pollIntervalMs: Long = 2_000L,
+) : ViewModel() {
+
+    private val _state = MutableStateFlow<LoginUiState>(LoginUiState.Idle)
+    val state: StateFlow<LoginUiState> = _state.asStateFlow()
+
+    private var pollJob: Job? = null
+
+    /** 打开登录页时调用。幂等：已在等扫码就不重复申请。 */
+    fun start() {
+        if (_state.value is LoginUiState.Waiting || _state.value is LoginUiState.Scanned) return
+        if (sessionStore.session.value.isLoggedIn) {
+            _state.value = LoginUiState.Success(sessionStore.session.value.nickname)
+            return
+        }
+        requestQrKey()
+    }
+
+    /** "刷新二维码"。 */
+    fun refresh() {
+        pollJob?.cancel()
+        requestQrKey()
+    }
+
+    fun reset() {
+        pollJob?.cancel()
+        _state.value = LoginUiState.Idle
+    }
+
+    private fun requestQrKey() {
+        pollJob?.cancel()
+        _state.value = LoginUiState.Loading
+        pollJob = viewModelScope.launch {
+            api.createQrKey()
+                .onSuccess { key ->
+                    _state.value = LoginUiState.Waiting(QR_PREFIX + key)
+                    pollLoop(key)
+                }
+                .onFailure { _state.value = LoginUiState.Failed("二维码获取失败，请检查网络") }
+        }
+    }
+
+    private suspend fun pollLoop(unikey: String) {
+        while (viewModelScope.isActive) {
+            delay(pollIntervalMs)
+            val result = api.poll(unikey)
+            when {
+                result.isFailure -> Unit // 网络抖动：保留二维码，下一轮再试
+                else -> when (val r = result.getOrThrow()) {
+                    QrPollResult.Waiting -> Unit
+                    QrPollResult.Scanned -> _state.value = LoginUiState.Scanned
+                    QrPollResult.Expired -> {
+                        requestQrKey() // 过期 → 自动重取（会 cancel 本 job）
+                        return
+                    }
+                    is QrPollResult.Success -> {
+                        sessionStore.save(r.musicU, r.csrf, null)
+                        _state.value = LoginUiState.Success(null)
+                        // 昵称是可选增强，单独再取一次；失败不影响登录成功
+                        api.fetchNickname(r.musicU, r.csrf).getOrNull()?.let { nick ->
+                            sessionStore.updateNickname(nick)
+                            _state.value = LoginUiState.Success(nick)
+                        }
+                        return
+                    }
+                }
+            }
+        }
+    }
+
+    override fun onCleared() {
+        pollJob?.cancel()
+        super.onCleared()
+    }
+
+    private companion object {
+        const val QR_PREFIX = "https://music.163.com/login?codekey="
+    }
+}

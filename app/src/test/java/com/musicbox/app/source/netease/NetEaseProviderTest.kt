@@ -247,4 +247,27 @@ class NetEaseProviderTest {
         assertTrue(result.isFailure)
         assertEquals(-460, (result.exceptionOrNull() as com.musicbox.app.source.SourceError.Api).code)
     }
+
+    // ── Task 2 登录会话注入 ──────────────────────────────────────
+
+    @Test
+    fun `search sends login cookies when session is logged in`() = runBlocking {
+        val transport = FakeTransport(TransportResponse(code = 200, body = fixtureBody()))
+        val provider = NetEaseProvider(
+            transport = transport,
+            deviceId = "ABCD",
+            session = {
+                com.musicbox.app.data.NetEaseSession(
+                    musicU = "MUSIC_TOKEN",
+                    csrf = "CSRF_TOKEN",
+                )
+            },
+        )
+
+        provider.search("x", SearchType.SONG, page = 1)
+
+        val cookie = transport.lastHeaders!!["Cookie"]!!
+        assertTrue("实际 Cookie：$cookie", cookie.contains("MUSIC_U=MUSIC_TOKEN"))
+        assertTrue(cookie.contains("__csrf=CSRF_TOKEN"))
+    }
 }

@@ -58,6 +58,8 @@ dependencies {
 
     implementation("com.squareup.okhttp3:okhttp:5.5.0")
     implementation("com.google.code.gson:gson:2.11.0")
+    // 扫码登录：本地生成二维码位图（纯 jar，无 Android 依赖）
+    implementation("com.google.zxing:core:3.5.4")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
 
     // Media3：ExoPlayer 播放引擎 + MediaSession（通知栏 / 锁屏 / 耳机线控）

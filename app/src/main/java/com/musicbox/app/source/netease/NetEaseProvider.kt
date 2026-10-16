@@ -22,6 +22,8 @@ import java.net.URLEncoder
 class NetEaseProvider(
     private val transport: HttpTransport,
     private val deviceId: String,
+    /** 登录会话供应器。每次请求现读，登录/登出后无需重建 provider。 */
+    private val session: () -> com.musicbox.app.data.NetEaseSession = { com.musicbox.app.data.NetEaseSession.Guest },
 ) : MusicProvider {
 
     override val id: String = "netease"
@@ -37,7 +39,8 @@ class NetEaseProvider(
             val limit = SEARCH_PAGE_SIZE
             // header 只构造一次：加密 JSON 里的 header 与 Cookie 头必须携带同一组
             // requestId/buildver，否则是最容易触发风控的隐性偏差。
-            val header = NetEaseHeader.build(deviceId)
+            val s = session()
+            val header = NetEaseHeader.build(deviceId, s.csrf)
             val payload = linkedMapOf<String, Any>(
                 "s" to keyword,
                 "type" to type.apiValue,
@@ -53,7 +56,7 @@ class NetEaseProvider(
             val body = "params=" + URLEncoder.encode(params, "UTF-8")
             val headers = mapOf(
                 "User-Agent" to NetEaseHeader.UA,
-                "Cookie" to NetEaseHeader.cookieHeader(header),
+                "Cookie" to NetEaseHeader.cookieHeader(header, s.musicU),
                 "Referer" to "https://music.163.com",
             )
 
@@ -80,7 +83,8 @@ class NetEaseProvider(
 
     override suspend fun getStreamUrl(songId: Long): Result<StreamInfo> = withContext(Dispatchers.IO) {
         try {
-            val header = NetEaseHeader.build(deviceId)
+            val s = session()
+            val header = NetEaseHeader.build(deviceId, s.csrf)
             val payload = linkedMapOf<String, Any>(
                 // ids 必须是「字符串形式的 JSON 数组」，实测写成数字数组拿不到结果
                 "ids" to "[$songId]",
@@ -96,7 +100,7 @@ class NetEaseProvider(
             val body = "params=" + URLEncoder.encode(params, "UTF-8")
             val headers = mapOf(
                 "User-Agent" to NetEaseHeader.UA,
-                "Cookie" to NetEaseHeader.cookieHeader(header),
+                "Cookie" to NetEaseHeader.cookieHeader(header, s.musicU),
                 "Referer" to "https://music.163.com",
             )
 
@@ -127,7 +131,8 @@ class NetEaseProvider(
 
     override suspend fun getLyric(songId: Long): Result<LyricData> = withContext(Dispatchers.IO) {
         try {
-            val header = NetEaseHeader.build(deviceId)
+            val s = session()
+            val header = NetEaseHeader.build(deviceId, s.csrf)
             val payload = linkedMapOf<String, Any>(
                 // 注意：这里是数字 id，不是取流那样的字符串 JSON 数组（实测，见计划 §1.1）
                 "id" to songId,
@@ -148,7 +153,7 @@ class NetEaseProvider(
             val body = "params=" + URLEncoder.encode(params, "UTF-8")
             val headers = mapOf(
                 "User-Agent" to NetEaseHeader.UA,
-                "Cookie" to NetEaseHeader.cookieHeader(header),
+                "Cookie" to NetEaseHeader.cookieHeader(header, s.musicU),
                 "Referer" to "https://music.163.com",
             )
 

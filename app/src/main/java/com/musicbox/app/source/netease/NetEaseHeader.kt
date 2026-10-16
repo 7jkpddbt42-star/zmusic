@@ -47,10 +47,16 @@ object NetEaseHeader {
         )
     }
 
-    fun cookieHeader(header: Map<String, String>): String =
-        header.entries.joinToString("; ") { (key, value) ->
+    /**
+     * 由 header 对象拼 Cookie。登录后额外带上 MUSIC_U（网易云鉴权的核心 cookie），
+     * 使 VIP / 完整版音质生效。
+     */
+    fun cookieHeader(header: Map<String, String>, musicU: String? = null): String {
+        val base = header.entries.joinToString("; ") { (key, value) ->
             encode(key) + "=" + encode(value)
         }
+        return if (musicU.isNullOrBlank()) base else "$base; MUSIC_U=" + encode(musicU)
+    }
 
     private fun encode(value: String): String = URLEncoder.encode(value, "UTF-8")
 }

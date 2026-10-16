@@ -9,6 +9,7 @@ import com.musicbox.app.data.SessionStore
 import com.musicbox.app.data.SettingsRepository
 import com.musicbox.app.data.SharedPrefsKeyValueStore
 import com.musicbox.app.source.MusicProvider
+import com.musicbox.app.source.netease.NetEaseLoginApi
 import com.musicbox.app.source.netease.NetEaseHeader
 import com.musicbox.app.source.netease.NetEaseProvider
 import com.musicbox.app.source.netease.OkHttpTransport
@@ -49,9 +50,12 @@ class AppContainer(context: Context) {
 
     val lyricDiskCache: LyricDiskCache = LyricDiskCache.forDir(filesDir("lyrics"))
 
+    val loginApi: NetEaseLoginApi = NetEaseLoginApi(OkHttpTransport(), deviceId)
+
     val provider: MusicProvider = NetEaseProvider(
         transport = OkHttpTransport(),
         deviceId = deviceId,
+        session = { sessionStore.session.value },
     )
 
     private fun filesDir(name: String): File = File(appContext.filesDir, name)
