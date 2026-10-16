@@ -10,6 +10,9 @@ sealed class SourceError(message: String? = null, cause: Throwable? = null) :
     /** 接口返回了非成功 code。 */
     class Api(val code: Int, message: String?) : SourceError(message ?: "接口返回 $code")
 
+    /** 接口应答正常但拿不到可播放地址（无版权 / 需要登录）。 */
+    class Unplayable(message: String? = null) : SourceError(message ?: "当前歌曲暂无可用播放地址")
+
     /** 响应解析失败（结构变化或脏数据）。 */
     class Parse(message: String?, cause: Throwable? = null) : SourceError(message, cause)
 

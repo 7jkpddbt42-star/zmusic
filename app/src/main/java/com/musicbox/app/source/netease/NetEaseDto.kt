@@ -1,6 +1,7 @@
 package com.musicbox.app.source.netease
 
 import com.musicbox.app.model.Song
+import com.musicbox.app.model.StreamInfo
 import com.google.gson.annotations.SerializedName
 
 /** /eapi/cloudsearch/pc 的响应结构。字段名以真实响应为准（见计划 §1.5）。 */
@@ -40,3 +41,36 @@ internal fun SongDto.toSong(providerId: String): Song = Song(
     coverUrl = album?.picUrl,
     providerId = providerId,
 )
+
+/** /eapi/song/enhance/player/url/v1 的响应结构（字段以真实响应为准，见计划 §1.2）。 */
+internal data class SongUrlRespDto(
+    @SerializedName("code") val code: Int = -1,
+    @SerializedName("data") val data: List<SongUrlDto>? = null,
+)
+
+internal data class SongUrlDto(
+    @SerializedName("id") val id: Long = 0L,
+    @SerializedName("url") val url: String? = null,
+    @SerializedName("br") val bitrateBps: Int? = null,
+    @SerializedName("size") val sizeBytes: Long? = null,
+    @SerializedName("expi") val expireSeconds: Long? = null,
+    @SerializedName("fee") val fee: Int? = null,
+    @SerializedName("level") val level: String? = null,
+    @SerializedName("freeTrialInfo") val freeTrialInfo: FreeTrialDto? = null,
+)
+
+internal data class FreeTrialDto(
+    @SerializedName("start") val startMs: Long = 0L,
+    @SerializedName("end") val endMs: Long = 0L,
+)
+
+/** 映射到统一模型。freeTrialInfo 非 null 即试听片段。 */
+internal fun SongUrlDto.toStreamInfo(): StreamInfo? {
+    val playableUrl = url
+    if (playableUrl.isNullOrBlank()) return null
+    return StreamInfo(
+        url = playableUrl,
+        bitrateBps = bitrateBps ?: 0,
+        isTrial = freeTrialInfo != null,
+    )
+}
