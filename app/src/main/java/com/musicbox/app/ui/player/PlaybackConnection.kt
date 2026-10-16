@@ -10,6 +10,7 @@ import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.ListenableFuture
 import com.musicbox.app.model.PlayMode
 import com.musicbox.app.player.PlaybackService
+import com.musicbox.app.player.PositionSource
 import com.musicbox.app.player.sharedSongStreamCache
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -56,10 +57,10 @@ data class PlaybackUiState(
 /**
  * MediaController 的连接与状态汇聚。UI 只跟它打交道，不直接接触 ExoPlayer。
  *
- * 位置每 250 毫秒采一次：进度条不需要逐帧精度。MI-3 的逐字歌词才需要逐帧时钟，
- * 那时会在这一层之上加 withFrameNanos 驱动的 positionClock。
+ * 位置每 250 毫秒采一次：进度条不需要逐帧精度。逐字歌词的逐帧时钟另走
+ * [com.musicbox.app.player.PositionSource]（见 FrameClock）。
  */
-class PlaybackConnection(private val context: Context) {
+class PlaybackConnection(private val context: Context) : PositionSource {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var future: ListenableFuture<MediaController>? = null
@@ -123,6 +124,13 @@ class PlaybackConnection(private val context: Context) {
     }
 
     fun clearError() = _state.update { it.copy(errorMessage = null) }
+
+    /**
+     * 逐帧可读的当前位置。直接读 MediaController 的 currentPosition（毫秒精度），
+     * 供逐字歌词的逐帧时钟调用；与 250ms 的 state.positionMs 是两条独立通路。
+     */
+    override fun positionMs(): Long =
+        _controller.value?.currentPosition?.coerceAtLeast(0L) ?: 0L
 
     private fun startTicker(controller: MediaController) {
         ticker?.cancel()
