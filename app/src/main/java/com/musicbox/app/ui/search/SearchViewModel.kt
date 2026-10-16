@@ -18,6 +18,8 @@ data class SearchUiState(
     val results: List<Song> = emptyList(),
     val message: String? = null,
     val searched: Boolean = false,
+    /** 接口成功但结果与查询词无真实关联（cloudsearch 的模糊兜底）。 */
+    val noRealMatch: Boolean = false,
     /** 当前正在播放的歌曲 id，用于列表高亮。由播放层推进，不是搜索层自己的状态。 */
     val nowPlayingSongId: Long? = null,
 )
@@ -42,7 +44,13 @@ class SearchViewModel(
             provider.search(keyword, SearchType.SONG, page = 1)
                 .onSuccess { songs ->
                     _state.update {
-                        it.copy(loading = false, results = songs, searched = true, message = null)
+                        it.copy(
+                            loading = false,
+                            results = songs,
+                            searched = true,
+                            noRealMatch = !hasRealMatch(keyword, songs),
+                            message = null,
+                        )
                     }
                 }
                 .onFailure { error ->

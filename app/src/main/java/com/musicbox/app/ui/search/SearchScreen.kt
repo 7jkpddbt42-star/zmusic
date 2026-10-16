@@ -25,6 +25,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -42,6 +43,7 @@ fun SearchScreen(
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier.fillMaxSize().padding(16.dp)) {
+        val keyboard = LocalSoftwareKeyboardController.current
         Row(verticalAlignment = Alignment.CenterVertically) {
             OutlinedTextField(
                 value = state.query,
@@ -50,7 +52,7 @@ fun SearchScreen(
                 label = { Text("搜索歌曲") },
                 modifier = Modifier.weight(1f),
             )
-            TextButton(onClick = onSearch) { Text("搜索") }
+            TextButton(onClick = { keyboard?.hide(); onSearch() }) { Text("搜索") }
         }
 
         if (state.loading) {
@@ -65,56 +67,65 @@ fun SearchScreen(
             )
         }
 
-        if (state.searched && !state.loading && state.message == null && state.results.isEmpty()) {
-            Text("没有找到结果", modifier = Modifier.padding(top = 16.dp))
+        val showEmpty = state.searched && !state.loading && state.message == null &&
+            (state.results.isEmpty() || state.noRealMatch)
+
+        if (showEmpty) {
+            Text(
+                text = if (state.noRealMatch) "没有找到相关结果，试试其他关键词" else "没有找到结果",
+                modifier = Modifier.padding(top = 16.dp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
 
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(top = 12.dp),
             verticalArrangement = Arrangement.spacedBy(0.dp),
         ) {
-            itemsIndexed(state.results, key = { _, song -> song.id }) { index, song ->
-                val isCurrent = song.id == nowPlayingSongId
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onSongClick(index) }
-                        .background(
-                            if (isCurrent) MaterialTheme.colorScheme.surfaceVariant
-                            else MaterialTheme.colorScheme.surface,
-                        )
-                        .padding(vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column(modifier = Modifier.weight(1f).padding(vertical = 4.dp)) {
-                        Text(
-                            text = song.name,
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = if (isCurrent) MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.onSurface,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        Text(
-                            text = song.artists.joinToString(" / ") +
-                                (song.album?.let { " · $it" } ?: ""),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
+            if (!showEmpty) {
+                itemsIndexed(state.results, key = { _, song -> song.id }) { index, song ->
+                    val isCurrent = song.id == nowPlayingSongId
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onSongClick(index) }
+                            .background(
+                                if (isCurrent) MaterialTheme.colorScheme.surfaceVariant
+                                else MaterialTheme.colorScheme.surface,
+                            )
+                            .padding(vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(modifier = Modifier.weight(1f).padding(vertical = 4.dp)) {
+                            Text(
+                                text = song.name,
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = if (isCurrent) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                text = song.artists.joinToString(" / ") +
+                                    (song.album?.let { " · $it" } ?: ""),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        IconButton(onClick = { onToggleFavorite(song) }) {
+                            Icon(
+                                imageVector = if (isFavorite(song.id)) Icons.Filled.Favorite
+                                else Icons.Filled.FavoriteBorder,
+                                contentDescription = "收藏",
+                                tint = if (isFavorite(song.id)) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
-                    IconButton(onClick = { onToggleFavorite(song) }) {
-                        Icon(
-                            imageVector = if (isFavorite(song.id)) Icons.Filled.Favorite
-                            else Icons.Filled.FavoriteBorder,
-                            contentDescription = "收藏",
-                            tint = if (isFavorite(song.id)) MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
+                    HorizontalDivider()
                 }
-                HorizontalDivider()
             }
         }
     }
