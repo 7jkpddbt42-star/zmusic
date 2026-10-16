@@ -37,6 +37,8 @@ data class QueueItem(
 data class PlaybackUiState(
     val connected: Boolean = false,
     val hasCurrent: Boolean = false,
+    /** 当前播放歌曲的音源 id，供搜索列表高亮用。 */
+    val currentSongId: Long? = null,
     val title: String? = null,
     val artist: String? = null,
     val album: String? = null,
@@ -141,6 +143,7 @@ class PlaybackConnection(private val context: Context) {
             previous.copy(
                 connected = true,
                 hasCurrent = item != null,
+                currentSongId = songId,
                 title = metadata?.title?.toString(),
                 artist = metadata?.artist?.toString(),
                 album = metadata?.albumTitle?.toString(),

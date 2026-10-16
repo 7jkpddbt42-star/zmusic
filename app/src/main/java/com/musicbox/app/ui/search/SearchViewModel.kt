@@ -5,7 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.musicbox.app.model.SearchType
 import com.musicbox.app.model.Song
 import com.musicbox.app.source.MusicProvider
-import com.musicbox.app.source.SourceError
+import com.musicbox.app.ui.toUserMessage
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -18,6 +18,8 @@ data class SearchUiState(
     val results: List<Song> = emptyList(),
     val message: String? = null,
     val searched: Boolean = false,
+    /** 当前正在播放的歌曲 id，用于列表高亮。由播放层推进，不是搜索层自己的状态。 */
+    val nowPlayingSongId: Long? = null,
 )
 
 class SearchViewModel(
@@ -44,17 +46,14 @@ class SearchViewModel(
                     }
                 }
                 .onFailure { error ->
-                    val text = when (error) {
-                        is SourceError.Network -> "网络不可用，请检查网络"
-                        is SourceError.Api -> "音源暂时不可用"
-                        is SourceError.Parse -> "解析失败，可能接口已变更"
-                        is SourceError.NotImplementedYet -> "该功能尚未实现"
-                        else -> "出错了"
-                    }
                     _state.update {
-                        it.copy(loading = false, searched = true, message = text)
+                        it.copy(loading = false, searched = true, message = error.toUserMessage())
                     }
                 }
         }
+    }
+
+    fun onNowPlayingChanged(songId: Long?) {
+        _state.update { it.copy(nowPlayingSongId = songId) }
     }
 }
