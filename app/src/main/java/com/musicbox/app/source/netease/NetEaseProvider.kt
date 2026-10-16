@@ -125,8 +125,60 @@ class NetEaseProvider(
         }
     }
 
-    override suspend fun getLyric(songId: Long): Result<LyricData> =
-        Result.failure(SourceError.NotImplementedYet("MI-3"))
+    override suspend fun getLyric(songId: Long): Result<LyricData> = withContext(Dispatchers.IO) {
+        try {
+            val header = NetEaseHeader.build(deviceId)
+            val payload = linkedMapOf<String, Any>(
+                // 注意：这里是数字 id，不是取流那样的字符串 JSON 数组（实测，见计划 §1.1）
+                "id" to songId,
+                "cp" to false,
+                "tv" to 0,
+                "lv" to 0,
+                "rv" to 0,
+                "kv" to 0,
+                // 下面三个控制是否返回 yrc/tlyric/romalrc，实测 0 即可拿到全部字段
+                "yv" to 0,
+                "ytv" to 0,
+                "yrv" to 0,
+                "e_r" to false,
+                "header" to header,
+            )
+            val uri = LYRIC_URI
+            val params = NetEaseCrypto.eapiParams(uri, gson.toJson(payload))
+            val body = "params=" + URLEncoder.encode(params, "UTF-8")
+            val headers = mapOf(
+                "User-Agent" to NetEaseHeader.UA,
+                "Cookie" to NetEaseHeader.cookieHeader(header),
+                "Referer" to "https://music.163.com",
+            )
+
+            val response = transport.post(EAPI_BASE + uri.replace("/api", "/eapi"), body, headers)
+
+            val dto = try {
+                gson.fromJson(response.body, LyricRespDto::class.java)
+            } catch (e: JsonSyntaxException) {
+                throw SourceError.Parse("响应不是合法 JSON", e)
+            } ?: throw SourceError.Parse("响应为空", null)
+
+            if (dto.code != 200) {
+                throw SourceError.Api(dto.code, null)
+            }
+
+            // 原始文本原样交给 lyric 层解析（音源不解析歌词，见设计文档 §4.2）
+            Result.success(
+                LyricData(
+                    yrc = dto.yrc?.lyric?.takeIf { it.isNotBlank() },
+                    lrc = dto.lrc?.lyric?.takeIf { it.isNotBlank() },
+                    translation = dto.tlyric?.lyric?.takeIf { it.isNotBlank() },
+                    romaji = dto.romalrc?.lyric?.takeIf { it.isNotBlank() },
+                ),
+            )
+        } catch (e: SourceError) {
+            Result.failure(e)
+        } catch (e: IOException) {
+            Result.failure(SourceError.Network(e))
+        }
+    }
 
     private companion object {
         const val EAPI_BASE = "https://interfacepc.music.163.com"
@@ -134,6 +186,8 @@ class NetEaseProvider(
         const val SEARCH_PAGE_SIZE = 30
 
         const val SONG_URL_URI = "/api/song/enhance/player/url/v1"
+
+        const val LYRIC_URI = "/api/song/lyric/v1"
 
         /** 实测该档位对免费歌给到 320kbps，VIP 歌自动降级为 standard + 试听片段。 */
         const val STREAM_LEVEL = "exhigh"

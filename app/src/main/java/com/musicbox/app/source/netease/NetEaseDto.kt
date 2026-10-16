@@ -74,3 +74,17 @@ internal fun SongUrlDto.toStreamInfo(): StreamInfo? {
         isTrial = freeTrialInfo != null,
     )
 }
+
+/** /eapi/song/lyric/v1 的响应结构。字段以真实响应为准（见计划 §1.2）。 */
+internal data class LyricRespDto(
+    @SerializedName("code") val code: Int = -1,
+    @SerializedName("lrc") val lrc: LyricTextDto? = null,
+    @SerializedName("yrc") val yrc: LyricTextDto? = null,
+    @SerializedName("tlyric") val tlyric: LyricTextDto? = null,
+    @SerializedName("romalrc") val romalrc: LyricTextDto? = null,
+)
+
+internal data class LyricTextDto(
+    @SerializedName("version") val version: Int = 0,
+    @SerializedName("lyric") val lyric: String? = null,
+)

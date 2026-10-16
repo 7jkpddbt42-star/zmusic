@@ -186,4 +186,65 @@ class NetEaseProviderTest {
         assertTrue(result.isFailure)
         assertEquals(-460, (result.exceptionOrNull() as com.musicbox.app.source.SourceError.Api).code)
     }
+
+    // ── MI-3 歌词 ────────────────────────────────────────────────
+
+    private fun lyricFixture(): String =
+        javaClass.classLoader!!.getResource("lyric_response.json")!!.readText()
+
+    @Test
+    fun `getLyric posts id and maps yrc lrc translation romaji`() = runBlocking {
+        val transport = FakeTransport(TransportResponse(code = 200, body = lyricFixture()))
+        val provider = NetEaseProvider(transport = transport, deviceId = "ABCD")
+
+        val result = provider.getLyric(5257138L)
+
+        assertTrue(result.isSuccess)
+        val lyric = result.getOrThrow()
+        assertTrue(lyric.yrc!!.contains("[24080,5080]"))
+        assertTrue(lyric.lrc!!.contains("[00:24.080]"))
+        assertEquals(null, lyric.translation)
+        assertEquals(null, lyric.romaji)
+
+        assertEquals(
+            "https://interfacepc.music.163.com/eapi/song/lyric/v1",
+            transport.lastUrl,
+        )
+        assertTrue(transport.lastBody!!.startsWith("params="))
+        val sentJson = jsonTextOf(
+            URLDecoder.decode(transport.lastBody!!.removePrefix("params="), "UTF-8"),
+        )
+        assertTrue("实际请求体：$sentJson", sentJson.contains(""""id":5257138"""))
+        assertTrue(sentJson.contains(""""cp":false"""))
+        assertTrue(sentJson.contains(""""yv":0"""))
+        assertTrue(sentJson.contains(""""e_r":false"""))
+        assertTrue(sentJson.contains(""""header":{"osver""""))
+        assertEquals(NetEaseHeader.UA, transport.lastHeaders!!["User-Agent"])
+        assertTrue(transport.lastHeaders!!["Cookie"]!!.contains("deviceId=ABCD"))
+    }
+
+    @Test
+    fun `getLyric tolerates null lyric sections`() = runBlocking {
+        val body = """{"code":200,"lrc":{"version":0,"lyric":null},"yrc":{"version":0,"lyric":null},"tlyric":{"version":0,"lyric":null},"romalrc":{"version":0,"lyric":null}}"""
+        val transport = FakeTransport(TransportResponse(code = 200, body = body))
+        val provider = NetEaseProvider(transport = transport, deviceId = "ABCD")
+
+        val lyric = provider.getLyric(1L).getOrThrow()
+
+        assertEquals(null, lyric.yrc)
+        assertEquals(null, lyric.lrc)
+        assertEquals(null, lyric.translation)
+        assertEquals(null, lyric.romaji)
+    }
+
+    @Test
+    fun `getLyric fails as Api when code is not 200`() = runBlocking {
+        val transport = FakeTransport(TransportResponse(code = 200, body = """{"code":-460,"msg":"cheating"}"""))
+        val provider = NetEaseProvider(transport = transport, deviceId = "ABCD")
+
+        val result = provider.getLyric(1L)
+
+        assertTrue(result.isFailure)
+        assertEquals(-460, (result.exceptionOrNull() as com.musicbox.app.source.SourceError.Api).code)
+    }
 }
