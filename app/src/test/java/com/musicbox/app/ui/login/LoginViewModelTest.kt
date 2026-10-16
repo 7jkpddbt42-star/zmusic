@@ -30,11 +30,11 @@ class LoginViewModelTest {
         private val polls: MutableList<Result<QrPollResult>> = mutableListOf(),
         var nickname: Result<String?> = Result.success(null),
     ) : LoginApi {
-        override fun createQrKey(): Result<String> =
+        override suspend fun createQrKey(): Result<String> =
             if (keys.isEmpty()) Result.failure(IllegalStateException("no key")) else keys.removeFirst()
-        override fun poll(unikey: String): Result<QrPollResult> =
+        override suspend fun poll(unikey: String): Result<QrPollResult> =
             if (polls.isEmpty()) Result.success(QrPollResult.Waiting) else polls.removeFirst()
-        override fun fetchNickname(musicU: String, csrf: String): Result<String?> = nickname
+        override suspend fun fetchNickname(musicU: String, csrf: String): Result<String?> = nickname
     }
 
     private val fakeError = Result.failure<QrPollResult>(IllegalStateException("网络不可用"))

@@ -1,5 +1,6 @@
 package com.musicbox.app.source.netease
 
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -17,7 +18,7 @@ class NetEaseLoginApiTest {
     }
 
     @Test
-    fun `createQrKey posts to eapi unikey and returns key`() {
+    fun `createQrKey posts to eapi unikey and returns key`() = runBlocking {
         val t = RecordingTransport(TransportResponse(200, """{"code":200,"unikey":"abc-123"}"""))
         val api = NetEaseLoginApi(t, deviceId = "DEV1")
 
@@ -32,7 +33,7 @@ class NetEaseLoginApiTest {
     }
 
     @Test
-    fun `createQrKey fails as Api when code is not 200`() {
+    fun `createQrKey fails as Api when code is not 200`() = runBlocking {
         val t = RecordingTransport(TransportResponse(200, """{"code":-460}"""))
         val result = NetEaseLoginApi(t, "D").createQrKey()
         assertTrue(result.isFailure)
@@ -40,13 +41,13 @@ class NetEaseLoginApiTest {
     }
 
     @Test
-    fun `poll maps 801 to Waiting`() {
+    fun `poll maps 801 to Waiting`() = runBlocking {
         val t = RecordingTransport(TransportResponse(200, """{"code":801,"message":"等待扫码"}"""))
         assertEquals(QrPollResult.Waiting, NetEaseLoginApi(t, "D").poll("k").getOrThrow())
     }
 
     @Test
-    fun `poll maps 800 to Expired and 802 to Scanned`() {
+    fun `poll maps 800 to Expired and 802 to Scanned`() = runBlocking {
         assertEquals(
             QrPollResult.Expired,
             NetEaseLoginApi(RecordingTransport(TransportResponse(200, """{"code":800}""")), "D")
@@ -60,7 +61,7 @@ class NetEaseLoginApiTest {
     }
 
     @Test
-    fun `poll 803 extracts MUSIC_U and csrf from cookie string`() {
+    fun `poll 803 extracts MUSIC_U and csrf from cookie string`() = runBlocking {
         val body = """{"code":803,"cookie":"MUSIC_U=MUSIC_TOKEN; __csrf=CSRF_TOKEN; NMTID=x"}"""
         val t = RecordingTransport(TransportResponse(200, body))
 
@@ -73,7 +74,7 @@ class NetEaseLoginApiTest {
     }
 
     @Test
-    fun `poll fails as Parse when 803 has no MUSIC_U`() {
+    fun `poll fails as Parse when 803 has no MUSIC_U`() = runBlocking {
         val body = """{"code":803,"cookie":"NMTID=x"}"""
         val t = RecordingTransport(TransportResponse(200, body))
         val result = NetEaseLoginApi(t, "D").poll("k")

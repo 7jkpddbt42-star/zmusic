@@ -36,6 +36,9 @@ fun LoginScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
 
+    // 进入页面即开始申请二维码并轮询（幂等：已在对码/扫码中不会重复申请）
+    androidx.compose.runtime.LaunchedEffect(Unit) { viewModel.start() }
+
     androidx.compose.runtime.LaunchedEffect(state) {
         if (state is LoginUiState.Success) onLoggedIn()
     }
