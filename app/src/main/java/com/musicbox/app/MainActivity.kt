@@ -8,6 +8,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
@@ -28,9 +29,18 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.musicbox.app.model.Song
+import com.musicbox.app.ui.BottomTabs
+import com.musicbox.app.ui.MainTab
 import com.musicbox.app.ui.MusicBoxTheme
+import com.musicbox.app.ui.library.FavoriteScreen
+import com.musicbox.app.ui.library.HistoryScreen
+import com.musicbox.app.ui.library.LibraryViewModel
+import com.musicbox.app.ui.login.LoginScreen
+import com.musicbox.app.ui.login.LoginViewModel
 import com.musicbox.app.ui.lyric.LyricScreen
 import com.musicbox.app.ui.lyric.LyricViewModel
+import com.musicbox.app.ui.mine.MineScreen
 import com.musicbox.app.ui.player.NowPlayingBar
 import com.musicbox.app.ui.player.PlaybackConnection
 import com.musicbox.app.ui.player.PlayerScreen
@@ -38,6 +48,7 @@ import com.musicbox.app.ui.player.PlayerViewModel
 import com.musicbox.app.ui.player.QueueSheet
 import com.musicbox.app.ui.search.SearchScreen
 import com.musicbox.app.ui.search.SearchViewModel
+import com.musicbox.app.ui.settings.SettingsScreen
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -71,7 +82,24 @@ private fun MusicBoxApp(container: AppContainer) {
         factory = viewModelFactory { initializer { PlayerViewModel(container.provider, connection) } },
     )
     val lyricVm: LyricViewModel = viewModel(
-        factory = viewModelFactory { initializer { LyricViewModel(container.provider) } },
+        factory = viewModelFactory {
+            initializer {
+                LyricViewModel(
+                    provider = container.provider,
+                    diskCache = container.lyricDiskCache,
+                )
+            }
+        },
+    )
+    val libraryVm: LibraryViewModel = viewModel(
+        factory = viewModelFactory {
+            initializer { LibraryViewModel(container.favorites, container.history) }
+        },
+    )
+    val loginVm: LoginViewModel = viewModel(
+        factory = viewModelFactory {
+            initializer { LoginViewModel(container.loginApi, container.sessionStore) }
+        },
     )
 
     val searchState by searchVm.state.collectAsStateWithLifecycle()
@@ -79,20 +107,29 @@ private fun MusicBoxApp(container: AppContainer) {
     val mode by playerVm.mode.collectAsStateWithLifecycle()
     val message by playerVm.message.collectAsStateWithLifecycle()
     val lyricState by lyricVm.state.collectAsStateWithLifecycle()
-    val showTranslation by lyricVm.showTranslation.collectAsStateWithLifecycle()
-    val showRomaji by lyricVm.showRomaji.collectAsStateWithLifecycle()
+    val showTranslationPref by container.settings.showTranslation.collectAsStateWithLifecycle()
+    val showRomajiPref by container.settings.showRomaji.collectAsStateWithLifecycle()
+    val fallbackUrl by container.settings.fallbackBaseUrl.collectAsStateWithLifecycle()
+    val session by container.sessionStore.session.collectAsStateWithLifecycle()
+    val favorites by libraryVm.favorites.collectAsStateWithLifecycle()
+    val history by libraryVm.history.collectAsStateWithLifecycle()
+
+    // 歌词开关：偏好持久化 → 注入歌词页
+    LaunchedEffect(showTranslationPref) { lyricVm.setShowTranslation(showTranslationPref) }
+    LaunchedEffect(showRomajiPref) { lyricVm.setShowRomaji(showRomajiPref) }
 
     val snackbarHostState = remember { SnackbarHostState() }
+    var tab by remember { mutableStateOf(MainTab.SEARCH) }
     var showPlayer by remember { mutableStateOf(false) }
     var showLyric by remember { mutableStateOf(false) }
     var showQueue by remember { mutableStateOf(false) }
+    var showSettings by remember { mutableStateOf(false) }
+    var showLogin by remember { mutableStateOf(false) }
 
-    // 切歌 → 搜索列表高亮跟随
+    // 切歌 → 搜索列表高亮 + 歌词加载
     LaunchedEffect(playState.currentSongId) {
         searchVm.onNowPlayingChanged(playState.currentSongId)
     }
-
-    // 切歌 → 拉歌词（失败不影响播放）
     LaunchedEffect(playState.currentSongId) {
         lyricVm.load(playState.currentSongId)
     }
@@ -126,27 +163,70 @@ private fun MusicBoxApp(container: AppContainer) {
         }
     }
 
+    fun playSong(song: Song) {
+        val index = searchState.results.indexOfFirst { it.id == song.id }
+        if (index >= 0) {
+            playerVm.play(searchState.results, index)
+        } else {
+            playerVm.play(listOf(song), 0)
+        }
+        libraryVm.recordPlayed(song)
+    }
+
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         bottomBar = {
-            NowPlayingBar(
-                state = playState,
-                onExpand = {
-                    showLyric = false
-                    showPlayer = true
-                },
-                onTogglePlay = playerVm::togglePlay,
-            )
+            Column {
+                NowPlayingBar(
+                    state = playState,
+                    onExpand = {
+                        showLyric = false
+                        showPlayer = true
+                    },
+                    onTogglePlay = playerVm::togglePlay,
+                )
+                BottomTabs(current = tab, onSelect = { tab = it })
+            }
         },
     ) { innerPadding ->
-        SearchScreen(
-            state = searchState,
-            onQueryChange = searchVm::onQueryChange,
-            onSearch = searchVm::search,
-            nowPlayingSongId = playState.currentSongId,
-            onSongClick = { index -> playerVm.play(searchState.results, index) },
-            modifier = Modifier.padding(innerPadding),
-        )
+        val contentModifier = Modifier.padding(innerPadding)
+        when (tab) {
+            MainTab.SEARCH -> SearchScreen(
+                state = searchState,
+                onQueryChange = searchVm::onQueryChange,
+                onSearch = searchVm::search,
+                nowPlayingSongId = playState.currentSongId,
+                onSongClick = { index ->
+                    playerVm.play(searchState.results, index)
+                    searchState.results.getOrNull(index)?.let { libraryVm.recordPlayed(it) }
+                },
+                isFavorite = libraryVm::isFavorite,
+                onToggleFavorite = { libraryVm.toggleFavorite(it) },
+                modifier = contentModifier,
+            )
+            MainTab.FAVORITE -> FavoriteScreen(
+                songs = favorites.map { it.song },
+                nowPlayingSongId = playState.currentSongId,
+                onSongClick = { playSong(it) },
+                modifier = contentModifier,
+            )
+            MainTab.HISTORY -> HistoryScreen(
+                songs = history.map { it.song },
+                nowPlayingSongId = playState.currentSongId,
+                onSongClick = { playSong(it) },
+                onClear = libraryVm::clearHistory,
+                modifier = contentModifier,
+            )
+            MainTab.MINE -> MineScreen(
+                session = session,
+                onLogin = { showLogin = true },
+                onLogout = { container.sessionStore.clear() },
+                onOpenSettings = { showSettings = true },
+                favoriteCount = favorites.size,
+                historyCount = history.size,
+                modifier = contentModifier,
+            )
+        }
     }
 
     if (showPlayer && showLyric) {
@@ -155,10 +235,14 @@ private fun MusicBoxApp(container: AppContainer) {
             source = connection,
             title = playState.title,
             artist = playState.artist,
-            showTranslation = showTranslation,
-            showRomaji = showRomaji,
-            onToggleTranslation = lyricVm::toggleTranslation,
-            onToggleRomaji = lyricVm::toggleRomaji,
+            showTranslation = showTranslationPref,
+            showRomaji = showRomajiPref,
+            onToggleTranslation = {
+                container.settings.setShowTranslation(!showTranslationPref)
+            },
+            onToggleRomaji = {
+                container.settings.setShowRomaji(!showRomajiPref)
+            },
             onSeek = playerVm::seekTo,
             onCollapse = { showLyric = false },
         )
@@ -166,6 +250,14 @@ private fun MusicBoxApp(container: AppContainer) {
         PlayerScreen(
             state = playState,
             modeLabel = mode.label,
+            isFavorite = playState.currentSongId?.let(libraryVm::isFavorite) == true,
+            onToggleFavorite = {
+                val id = playState.currentSongId ?: return@PlayerScreen
+                val song = searchState.results.firstOrNull { it.id == id }
+                    ?: history.firstOrNull { it.song.id == id }?.song
+                    ?: favorites.firstOrNull { it.song.id == id }?.song
+                if (song != null) libraryVm.toggleFavorite(song)
+            },
             onCollapse = { showPlayer = false },
             onTogglePlay = playerVm::togglePlay,
             onNext = playerVm::next,
@@ -185,6 +277,39 @@ private fun MusicBoxApp(container: AppContainer) {
             onSelect = { index -> playerVm.selectQueueItem(index) },
             onRemove = playerVm::removeQueueItem,
             onCycleMode = playerVm::cyclePlayMode,
+        )
+    }
+
+    if (showLogin) {
+        LoginScreen(
+            viewModel = loginVm,
+            onLoggedIn = {
+                showLogin = false
+                tab = MainTab.MINE
+            },
+            onBack = {
+                loginVm.reset()
+                showLogin = false
+            },
+        )
+    }
+
+    if (showSettings) {
+        SettingsScreen(
+            showTranslation = showTranslationPref,
+            showRomaji = showRomajiPref,
+            fallbackBaseUrl = fallbackUrl,
+            lyricCacheCount = container.lyricDiskCache.size(),
+            onToggleTranslation = container.settings::setShowTranslation,
+            onToggleRomaji = container.settings::setShowRomaji,
+            onSaveFallbackUrl = container.settings::setFallbackBaseUrl,
+            onClearLyricCache = {
+                container.lyricDiskCache.clear()
+                showSettings = false
+            },
+            logText = container.log::readAll,
+            onClearLog = container.log::clear,
+            onBack = { showSettings = false },
         )
     }
 }

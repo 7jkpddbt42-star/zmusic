@@ -12,6 +12,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
@@ -38,6 +43,8 @@ import androidx.compose.ui.unit.dp
 internal fun PlayerScreen(
     state: PlaybackUiState,
     modeLabel: String,
+    isFavorite: Boolean,
+    onToggleFavorite: () -> Unit,
     onCollapse: () -> Unit,
     onTogglePlay: () -> Unit,
     onNext: () -> Unit,
@@ -76,7 +83,18 @@ internal fun PlayerScreen(
                     .clickable(onClick = onOpenLyric),
             )
             Spacer(modifier = Modifier.height(10.dp))
-            TextButton(onClick = onOpenLyric) { Text("歌词") }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = onOpenLyric) { Text("歌词") }
+                IconButton(onClick = onToggleFavorite) {
+                    Icon(
+                        imageVector = if (isFavorite) Icons.Filled.Favorite
+                        else Icons.Filled.FavoriteBorder,
+                        contentDescription = "收藏",
+                        tint = if (isFavorite) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
 
             Spacer(modifier = Modifier.height(28.dp))
             Text(
