@@ -80,7 +80,15 @@ class PlaybackConnection(private val context: Context) : PositionSource {
 
         override fun onPlayerError(error: PlaybackException) {
             // 取流失败 / 版权不可播：显式提示并自动跳下一首（设计文档 §9）
-            _state.update { it.copy(errorMessage = "当前歌曲无法播放，已跳过", isBuffering = false) }
+            val isNetwork = error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
+                error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT ||
+                error.errorCode == PlaybackException.ERROR_CODE_IO_UNSPECIFIED
+            val text = if (isNetwork) {
+                "网络异常，正在尝试下一首"
+            } else {
+                "当前歌曲无法播放，已跳过"
+            }
+            _state.update { it.copy(errorMessage = text, isBuffering = false) }
             val current = _controller.value
             if (current != null && current.hasNextMediaItem()) {
                 current.seekToNextMediaItem()

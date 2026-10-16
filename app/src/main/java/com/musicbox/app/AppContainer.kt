@@ -8,6 +8,7 @@ import com.musicbox.app.data.LyricDiskCache
 import com.musicbox.app.data.SessionStore
 import com.musicbox.app.data.SettingsRepository
 import com.musicbox.app.data.SharedPrefsKeyValueStore
+import com.musicbox.app.player.NetworkMonitor
 import com.musicbox.app.source.MusicProvider
 import com.musicbox.app.source.netease.NetEaseLoginApi
 import com.musicbox.app.source.netease.NetEaseHeader
@@ -44,6 +45,8 @@ class AppContainer(context: Context) {
 
     val log: AppLog = AppLog.forDir(filesDir("logs"))
 
+    val networkMonitor: NetworkMonitor = NetworkMonitor(appContext)
+
     val favorites: FavoriteRepository = FavoriteRepository.forDir(filesDir("data"))
 
     val history: HistoryRepository = HistoryRepository.forDir(filesDir("data"))
@@ -56,6 +59,7 @@ class AppContainer(context: Context) {
         transport = OkHttpTransport(),
         deviceId = deviceId,
         session = { sessionStore.session.value },
+        appLog = log,
     )
 
     private fun filesDir(name: String): File = File(appContext.filesDir, name)

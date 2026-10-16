@@ -24,6 +24,8 @@ class NetEaseProvider(
     private val deviceId: String,
     /** 登录会话供应器。每次请求现读，登录/登出后无需重建 provider。 */
     private val session: () -> com.musicbox.app.data.NetEaseSession = { com.musicbox.app.data.NetEaseSession.Guest },
+    /** 本地滚动日志。默认 null：既有单测无需注入，不破坏既有调用。 */
+    private val appLog: com.musicbox.app.data.AppLog? = null,
 ) : MusicProvider {
 
     override val id: String = "netease"
@@ -75,8 +77,10 @@ class NetEaseProvider(
             val songs = dto.result?.songs.orEmpty().map { it.toSong(id) }
             Result.success(songs)
         } catch (e: SourceError) {
+            appLog?.log("netease", "search 失败 code=${(e as? SourceError.Api)?.code ?: "-"}", e)
             Result.failure(e)
         } catch (e: IOException) {
+            appLog?.log("netease", "search 网络异常", e)
             Result.failure(SourceError.Network(e))
         }
     }
@@ -123,8 +127,10 @@ class NetEaseProvider(
 
             Result.success(info)
         } catch (e: SourceError) {
+            appLog?.log("netease", "getStreamUrl 失败 code=${(e as? SourceError.Api)?.code ?: "-"}", e)
             Result.failure(e)
         } catch (e: IOException) {
+            appLog?.log("netease", "getStreamUrl 网络异常", e)
             Result.failure(SourceError.Network(e))
         }
     }
@@ -179,8 +185,10 @@ class NetEaseProvider(
                 ),
             )
         } catch (e: SourceError) {
+            appLog?.log("netease", "getLyric 失败 code=${(e as? SourceError.Api)?.code ?: "-"}", e)
             Result.failure(e)
         } catch (e: IOException) {
+            appLog?.log("netease", "getLyric 网络异常", e)
             Result.failure(SourceError.Network(e))
         }
     }

@@ -87,6 +87,7 @@ private fun MusicBoxApp(container: AppContainer) {
                 LyricViewModel(
                     provider = container.provider,
                     diskCache = container.lyricDiskCache,
+                    connectivity = container.networkMonitor.observe(),
                 )
             }
         },
@@ -125,6 +126,19 @@ private fun MusicBoxApp(container: AppContainer) {
     var showQueue by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     var showLogin by remember { mutableStateOf(false) }
+
+    // 断网 / 恢复：明确提示（设计文档 §9）
+    var wasOnline by remember { mutableStateOf(true) }
+    LaunchedEffect(Unit) {
+        container.networkMonitor.observe().collect { online ->
+            if (!online) {
+                snackbarHostState.showSnackbar("网络已断开，播放可能中断")
+            } else if (!wasOnline) {
+                snackbarHostState.showSnackbar("网络已恢复")
+            }
+            wasOnline = online
+        }
+    }
 
     // 切歌 → 搜索列表高亮 + 歌词加载
     LaunchedEffect(playState.currentSongId) {

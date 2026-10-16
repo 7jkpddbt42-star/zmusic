@@ -100,12 +100,30 @@ class PlaybackService : MediaSessionService() {
 
         sharedSongStreamCache.get(songId)?.let { return Uri.parse(it.url) }
 
-        val info = runBlocking {
-            withTimeoutOrNull(RESOLVE_TIMEOUT_MS) { container.provider.getStreamUrl(songId) }
-        }?.getOrNull() ?: throw IOException("取流失败 songId=$songId")
+        val info = runBlocking { resolveWithRetry(songId) }
+            ?: throw IOException("取流失败 songId=$songId")
 
         sharedSongStreamCache.put(songId, info)
         return Uri.parse(info.url)
+    }
+
+    /**
+     * 取流失败自动重连（设计文档 §9：指数退避，最多 3 次）。
+     * 退避 0.5s → 1s → 2s，总等待 3.5s，不会让用户等太久，也足以扛过瞬时抖动。
+     */
+    private suspend fun resolveWithRetry(songId: Long): com.musicbox.app.model.StreamInfo? {
+        var backoff = 500L
+        repeat(MAX_STREAM_ATTEMPTS) { attempt ->
+            val info = withTimeoutOrNull(RESOLVE_TIMEOUT_MS) {
+                container.provider.getStreamUrl(songId)
+            }?.getOrNull()
+            if (info != null) return info
+            if (attempt < MAX_STREAM_ATTEMPTS - 1) {
+                kotlinx.coroutines.delay(backoff)
+                backoff *= 2
+            }
+        }
+        return null
     }
 
     /** 提前把下一首的地址取好，让切歌时 resolver 直接命中缓存、不阻塞。 */
@@ -123,5 +141,6 @@ class PlaybackService : MediaSessionService() {
 
     private companion object {
         const val RESOLVE_TIMEOUT_MS = 15_000L
+        const val MAX_STREAM_ATTEMPTS = 3
     }
 }
