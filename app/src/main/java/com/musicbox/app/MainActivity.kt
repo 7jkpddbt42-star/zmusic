@@ -365,6 +365,7 @@ private fun MusicBoxApp(container: AppContainer, spec: ThemeSpec, coverSeed: Col
                 ) {
                     PlayerScreen(
                         state = playState,
+                        source = connection,
                         modeLabel = mode.label,
                         isFavorite = playState.currentSongId?.let(libraryVm::isFavorite) == true,
                         immersive = immersive,

@@ -26,12 +26,10 @@ import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -41,18 +39,23 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.musicbox.app.player.PositionSource
 import com.musicbox.app.ui.components.BlurredBackdrop
 import com.musicbox.app.ui.components.GlassCard
+import com.musicbox.app.ui.components.ParticleField
 import com.musicbox.app.ui.components.VinylRecord
+import com.musicbox.app.ui.components.WaveformSeekBar
 import com.musicbox.app.ui.components.flowingLight
 import com.musicbox.app.ui.components.rememberFlowProgress
 
 /**
  * 全屏播放页。
  *
- * 视觉分层（自下而上）：玻璃背景层（封面模糊 + 遮罩）→ 透明顶栏 → 旋转黑胶唱片 →
+ * 视觉分层（自下而上）：玻璃背景层（封面模糊 + 遮罩）→ 粒子层 → 透明顶栏 → 旋转黑胶唱片 →
  * 信息区玻璃卡片 → 控制区玻璃卡片。
  * 唱片本身保持清晰（不参与背景模糊），[VinylRecord] 的 `onBitmap` 继续驱动封面取色。
+ *
+ * 进度条为 [WaveformSeekBar]（确定性伪波形，非真实频谱分析），点击/拖动可跳转。
  *
  * 沉浸模式（[immersive]）：隐藏顶栏与「歌词/收藏」小按钮行，信息区改为唱片下方的纯文本，
  * 仅保留极简控制卡片；长按播放键切换进出。
@@ -61,6 +64,7 @@ import com.musicbox.app.ui.components.rememberFlowProgress
 @Composable
 internal fun PlayerScreen(
     state: PlaybackUiState,
+    source: PositionSource,
     modeLabel: String,
     isFavorite: Boolean,
     immersive: Boolean,
@@ -89,6 +93,13 @@ internal fun PlayerScreen(
     ) {
         // 最底层：封面放大 → 模糊（API 31+ 真模糊 / 26–30 位图降采样近似）→ 遮罩
         BlurredBackdrop(url = state.artworkUrl, modifier = Modifier.fillMaxSize())
+
+        // 粒子层：在背景之上、玻璃卡片之下。纯装饰，不拦截点击；暂停即静止
+        ParticleField(
+            source = source,
+            isPlaying = state.isPlaying,
+            modifier = Modifier.fillMaxSize(),
+        )
 
         Column(
             modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 16.dp),
@@ -206,42 +217,35 @@ internal fun PlayerScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            var dragging by remember { mutableStateOf(false) }
-            var dragValue by remember { mutableFloatStateOf(0f) }
-            val max = state.durationMs.coerceAtLeast(1L).toFloat()
-            val shown = if (dragging) dragValue else state.positionMs.toFloat()
+            // 拖动预览比例：非 null 时时间行显示拖动目标，抬手后回到真实播放位置
+            var scrubFraction by remember { mutableStateOf<Float?>(null) }
 
-            // 控制区：进度条 + 时间 + 控制按钮行 —— 玻璃卡片
+            // 控制区：波形进度条 + 时间 + 控制按钮行 —— 玻璃卡片
             GlassCard(
                 modifier = Modifier.fillMaxWidth(),
                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
             ) {
-                Box(modifier = Modifier.fillMaxWidth()) {
-                    Slider(
-                        value = shown.coerceIn(0f, max),
-                        onValueChange = {
-                            dragging = true
-                            dragValue = it
-                        },
-                        onValueChangeFinished = {
-                            onSeek(dragValue.toLong())
-                            dragging = false
-                        },
-                        valueRange = 0f..max,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    // 流光进度带：宽度按已播放比例，叠在 Slider 轨道位置；无 pointerInput，不拦截拖动
-                    FlowingProgressBand(
-                        fraction = shown / max,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.align(Alignment.CenterStart).padding(horizontal = 10.dp),
-                    )
-                }
+                WaveformSeekBar(
+                    source = source,
+                    songId = state.currentSongId,
+                    durationMs = state.durationMs,
+                    onSeek = {
+                        onSeek(it)
+                        scrubFraction = null
+                    },
+                    onScrub = { scrubFraction = it },
+                    modifier = Modifier.fillMaxWidth(),
+                )
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
-                    Text(text = formatTime(shown.toLong()), style = MaterialTheme.typography.labelSmall)
+                    Text(
+                        text = formatTime(
+                            scrubFraction?.let { (it * state.durationMs).toLong() } ?: state.positionMs,
+                        ),
+                        style = MaterialTheme.typography.labelSmall,
+                    )
                     Text(text = formatTime(state.durationMs), style = MaterialTheme.typography.labelSmall)
                 }
 
@@ -311,20 +315,6 @@ private fun FlowingUnderline(color: Color, modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
             .height(3.dp)
-            .flowingLight(progress = progress, colors = listOf(color, Color.Transparent)),
-    )
-}
-
-/**
- * 流光进度带：4dp 高，宽度按已播放比例 [fraction]。纯装饰，不拦截点击。
- */
-@Composable
-private fun FlowingProgressBand(fraction: Float, color: Color, modifier: Modifier = Modifier) {
-    val progress = rememberFlowProgress()
-    Box(
-        modifier = modifier
-            .fillMaxWidth(fraction.coerceIn(0f, 1f))
-            .height(4.dp)
             .flowingLight(progress = progress, colors = listOf(color, Color.Transparent)),
     )
 }
