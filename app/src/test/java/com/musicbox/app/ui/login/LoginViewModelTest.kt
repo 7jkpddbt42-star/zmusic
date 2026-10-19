@@ -37,7 +37,8 @@ class LoginViewModelTest {
         override suspend fun fetchNickname(musicU: String, csrf: String): Result<String?> = nickname
     }
 
-    private val fakeError = Result.failure<QrPollResult>(IllegalStateException("网络不可用"))
+    private val fakeError =
+        Result.failure<QrPollResult>(com.musicbox.app.source.SourceError.Network(java.io.IOException("网络不可用")))
 
     @Test
     fun `start exposes waiting state with qr content`() = runTest(dispatcher) {
@@ -76,7 +77,7 @@ class LoginViewModelTest {
     }
 
     @Test
-    fun `expired qr requests a new key`() = runTest(dispatcher) {
+    fun `expired qr requests a new key and shows a notice`() = runTest(dispatcher) {
         val api = FakeLoginApi(
             keys = mutableListOf(Result.success("K1"), Result.success("K2")),
             polls = mutableListOf(Result.success(QrPollResult.Expired)),
@@ -84,11 +85,14 @@ class LoginViewModelTest {
         val vm = LoginViewModel(api, SessionStore(InMemoryKeyValueStore()), pollIntervalMs = 2_000L)
 
         vm.start()
-        advanceTimeBy(2_100) // 轮询 → Expired → 重取 key
+        advanceTimeBy(2_100) // 轮询 → Expired → 自动重取 key
         advanceTimeBy(2_100)
 
         assertEquals(
-            LoginUiState.Waiting("https://music.163.com/login?codekey=K2"),
+            LoginUiState.Waiting(
+                qrContent = "https://music.163.com/login?codekey=K2",
+                notice = "二维码已过期，已为你刷新，请重新扫描",
+            ),
             vm.state.value,
         )
         vm.reset() // 停掉轮询，避免测试结束时仍有挂起的轮询协程
@@ -109,5 +113,23 @@ class LoginViewModelTest {
             vm.state.value,
         )
         vm.reset() // 停掉轮询，避免测试结束时仍有挂起的轮询协程
+    }
+
+    @Test
+    fun `non retryable poll error surfaces as failure`() = runTest(dispatcher) {
+        val api = FakeLoginApi(
+            keys = mutableListOf(Result.success("K1")),
+            polls = mutableListOf(
+                Result.failure(com.musicbox.app.source.SourceError.Api(9019, null)),
+                Result.success(QrPollResult.Waiting),
+            ),
+        )
+        val vm = LoginViewModel(api, SessionStore(InMemoryKeyValueStore()), pollIntervalMs = 2_000L)
+
+        vm.start()
+        advanceTimeBy(2_100)
+
+        // 接口异常不会自愈：必须把真实原因暴露给用户，而不是继续无反馈地转圈。
+        assertEquals(LoginUiState.Failed("登录失败：接口返回 9019"), vm.state.value)
     }
 }

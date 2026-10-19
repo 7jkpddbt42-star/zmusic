@@ -59,6 +59,14 @@ fun LoginScreen(
         when (val s = state) {
             is LoginUiState.Loading, LoginUiState.Idle -> CircularProgressIndicator()
             is LoginUiState.Waiting -> {
+                if (s.notice != null) {
+                    Text(
+                        text = s.notice,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(bottom = 12.dp),
+                    )
+                }
                 QrImage(s.qrContent)
                 Text("打开网易云音乐 App → 扫一扫", modifier = Modifier.padding(top = 16.dp))
             }
