@@ -5,6 +5,7 @@ import android.content.Context
 import android.os.Build
 import androidx.compose.ui.graphics.Color
 import com.musicbox.app.data.AppLog
+import com.musicbox.app.data.BackgroundStore
 import com.musicbox.app.data.FavoriteRepository
 import com.musicbox.app.data.HistoryRepository
 import com.musicbox.app.data.LyricDiskCache
@@ -47,6 +48,9 @@ class AppContainer(context: Context) {
     val deviceIdValue: String get() = deviceId
 
     val settings: SettingsRepository = SettingsRepository(kv)
+
+    /** 播放页自选背景素材仓库：把用户选中的本机图片/视频复制到私有目录。 */
+    val backgroundStore: BackgroundStore = BackgroundStore(appContext)
 
     val sessionStore: SessionStore = SessionStore(kv)
 

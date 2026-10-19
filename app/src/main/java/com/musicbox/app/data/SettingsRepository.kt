@@ -24,6 +24,10 @@ class SettingsRepository(private val store: KeyValueStore) {
     private val _themeSpec = MutableStateFlow(readThemeSpec())
     val themeSpec: StateFlow<ThemeSpec> = _themeSpec.asStateFlow()
 
+    /** 播放页背景偏好整包暴露：类型 + 私有目录素材路径。 */
+    private val _backgroundSpec = MutableStateFlow(readBackgroundSpec())
+    val backgroundSpec: StateFlow<BackgroundSpec> = _backgroundSpec.asStateFlow()
+
     private val _desktopLyricEnabled =
         MutableStateFlow(store.getBoolean(KEY_DESKTOP_LYRIC_ENABLED, false))
     val desktopLyricEnabled: StateFlow<Boolean> = _desktopLyricEnabled.asStateFlow()
@@ -83,6 +87,25 @@ class SettingsRepository(private val store: KeyValueStore) {
         _themeSpec.update { it.copy(playerFixedSeedArgb = argb) }
     }
 
+    fun setBackgroundImage(path: String) {
+        store.putString(KEY_BACKGROUND_TYPE, BackgroundType.Image.key)
+        store.putString(KEY_BACKGROUND_PATH, path)
+        _backgroundSpec.value = BackgroundSpec(BackgroundType.Image, path)
+    }
+
+    fun setBackgroundVideo(path: String) {
+        store.putString(KEY_BACKGROUND_TYPE, BackgroundType.Video.key)
+        store.putString(KEY_BACKGROUND_PATH, path)
+        _backgroundSpec.value = BackgroundSpec(BackgroundType.Video, path)
+    }
+
+    /** 恢复默认：类型回到封面模糊，路径清空。 */
+    fun resetBackground() {
+        store.putString(KEY_BACKGROUND_TYPE, BackgroundType.Cover.key)
+        store.putString(KEY_BACKGROUND_PATH, "")
+        _backgroundSpec.value = BackgroundSpec.COVER
+    }
+
     fun setDesktopLyricEnabled(value: Boolean) {
         store.putBoolean(KEY_DESKTOP_LYRIC_ENABLED, value)
         _desktopLyricEnabled.value = value
@@ -108,6 +131,11 @@ class SettingsRepository(private val store: KeyValueStore) {
         store.putInt(KEY_DESKTOP_LYRIC_Y, y)
     }
 
+    private fun readBackgroundSpec(): BackgroundSpec = BackgroundSpec(
+        type = BackgroundType.fromKey(store.getString(KEY_BACKGROUND_TYPE)),
+        path = store.getString(KEY_BACKGROUND_PATH).orEmpty().ifBlank { null },
+    )
+
     private fun readThemeSpec(): ThemeSpec = ThemeSpec(
         mode = ThemeMode.fromKey(store.getString(KEY_THEME_MODE)),
         seedSource = SeedSource.fromKey(store.getString(KEY_SEED_SOURCE)),
@@ -127,6 +155,8 @@ class SettingsRepository(private val store: KeyValueStore) {
         const val KEY_SEPARATE_PLAYER = "separate_player_theme"
         const val KEY_PLAYER_SEED_SOURCE = "player_seed_source"
         const val KEY_PLAYER_FIXED_SEED = "player_fixed_seed_argb"
+        const val KEY_BACKGROUND_TYPE = "background_type"
+        const val KEY_BACKGROUND_PATH = "background_path"
         const val KEY_DESKTOP_LYRIC_ENABLED = "desktop_lyric_enabled"
         const val KEY_DESKTOP_LYRIC_FONT_SP = "desktop_lyric_font_sp"
         const val KEY_DESKTOP_LYRIC_COLOR = "desktop_lyric_color_argb"

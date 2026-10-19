@@ -25,14 +25,6 @@ private const val LOW_RES_EDGE = 24
 /**
  * 全屏毛玻璃背景层：封面放大铺满 → 模糊 → 暗化/染色遮罩。
  *
- * **两级模糊，调用方无感**：
- * - API 31+：真实模糊，[Modifier.blur]。
- * - API 26–30：把封面降到 [LOW_RES_EDGE]×[LOW_RES_EDGE] 再以 `FillBounds` 放大铺满，
- *   放大后天然柔化，视觉近似毛玻璃；**不**在低版本调用 [Modifier.blur]（无效）。
- *
- * 遮罩：`surface` 由上方高透明渐变到底部不透明（保证前景文字可读），
- * 另叠一层主题 `primary` 的极低透明染色与主题色呼应。
- *
  * 纯装饰层：不含任何 clickable/pointerInput，不拦截点击。
  * url 为空或加载失败时表现为渐变底，不崩溃。
  */
@@ -43,7 +35,33 @@ fun BlurredBackdrop(
     blurRadius: Dp = 48.dp,
     scrim: Boolean = true,
 ) {
-    val bitmap = rememberArtworkBitmap(url)
+    BlurScrimBitmap(
+        bitmap = rememberArtworkBitmap(url),
+        modifier = modifier,
+        blurRadius = blurRadius,
+        scrim = scrim,
+    )
+}
+
+/**
+ * 位图 → 毛玻璃渲染 + 染色 + 遮罩的公共实现，供 [BlurredBackdrop]（封面）与
+ * 自定义背景层（本机图片）共用。
+ *
+ * **两级模糊，调用方无感**：
+ * - API 31+：真实模糊，[Modifier.blur]。
+ * - API 26–30：把位图降到 [LOW_RES_EDGE]×[LOW_RES_EDGE] 再以 `FillBounds` 放大铺满，
+ *   放大后天然柔化，视觉近似毛玻璃；**不**在低版本调用 [Modifier.blur]（无效）。
+ *
+ * 遮罩：`surface` 由上方高透明渐变到底部不透明（保证前景文字可读），
+ * 另叠一层主题 `primary` 的极低透明染色与主题色呼应。位图为 null 时仅剩渐变底。
+ */
+@Composable
+internal fun BlurScrimBitmap(
+    bitmap: Bitmap?,
+    modifier: Modifier = Modifier,
+    blurRadius: Dp = 48.dp,
+    scrim: Boolean = true,
+) {
     val surface = MaterialTheme.colorScheme.surface
     val primary = MaterialTheme.colorScheme.primary
 

@@ -84,6 +84,10 @@ fun SettingsScreen(
     onDesktopLyricEnabled: (Boolean) -> Unit,
     onDesktopLyricFontSp: (Int) -> Unit,
     onDesktopLyricColorArgb: (Int) -> Unit,
+    backgroundLabel: String,
+    onPickBackgroundImage: () -> Unit,
+    onPickBackgroundVideo: () -> Unit,
+    onResetBackground: () -> Unit,
     logText: () -> String,
     onClearLog: () -> Unit,
     onBack: () -> Unit,
@@ -182,6 +186,31 @@ fun SettingsScreen(
                 onSelect = onPlayerFixedSeedArgb,
                 modifier = Modifier.padding(top = 4.dp),
             )
+        }
+
+        HorizontalDivider(modifier = Modifier.padding(vertical = 20.dp))
+
+        Text("背景", style = MaterialTheme.typography.titleMedium)
+        Text(
+            "仅支持本机素材（相册中的图片或视频），不提供官方素材库 / 在线 MV；选中的素材会复制到应用内保存。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 4.dp),
+        )
+        Text(
+            backgroundLabel,
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.padding(top = 8.dp),
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Button(onClick = onPickBackgroundImage) { Text("选择背景图片") }
+            Button(onClick = onPickBackgroundVideo) { Text("选择背景视频") }
+        }
+        TextButton(onClick = onResetBackground, modifier = Modifier.padding(top = 4.dp)) {
+            Text("恢复默认")
         }
 
         HorizontalDivider(modifier = Modifier.padding(vertical = 20.dp))

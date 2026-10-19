@@ -10,6 +10,7 @@ import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
@@ -45,6 +46,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.musicbox.app.data.BackgroundType
 import com.musicbox.app.desktoplyric.DesktopLyricService
 import com.musicbox.app.model.Song
 import com.musicbox.app.ui.BottomTabs
@@ -154,6 +156,7 @@ private fun MusicBoxApp(container: AppContainer, spec: ThemeSpec, coverSeed: Col
     val desktopLyricEnabled by container.settings.desktopLyricEnabled.collectAsStateWithLifecycle()
     val desktopLyricFontSp by container.settings.desktopLyricFontSp.collectAsStateWithLifecycle()
     val desktopLyricColorArgb by container.settings.desktopLyricColorArgb.collectAsStateWithLifecycle()
+    val backgroundSpec by container.settings.backgroundSpec.collectAsStateWithLifecycle()
     val session by container.sessionStore.session.collectAsStateWithLifecycle()
     val favorites by libraryVm.favorites.collectAsStateWithLifecycle()
     val history by libraryVm.history.collectAsStateWithLifecycle()
@@ -164,6 +167,32 @@ private fun MusicBoxApp(container: AppContainer, spec: ThemeSpec, coverSeed: Col
 
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+
+    // 播放页背景素材选择器：选中后复制到私有目录并持久化；取消（uri 为 null）不做任何事
+    val backgroundImagePicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickVisualMedia(),
+    ) { uri ->
+        if (uri != null) {
+            val path = container.backgroundStore.importImage(uri)
+            if (path != null) {
+                container.settings.setBackgroundImage(path)
+            } else {
+                scope.launch { snackbarHostState.showSnackbar("无法读取所选文件") }
+            }
+        }
+    }
+    val backgroundVideoPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.GetContent(),
+    ) { uri ->
+        if (uri != null) {
+            val path = container.backgroundStore.importVideo(uri)
+            if (path != null) {
+                container.settings.setBackgroundVideo(path)
+            } else {
+                scope.launch { snackbarHostState.showSnackbar("无法读取所选文件") }
+            }
+        }
+    }
 
     // 桌面歌词悬浮窗：无权限时跳系统「显示在其他应用上层」设置页，返回后回读状态再决定启停
     val overlayPermissionLauncher = rememberLauncherForActivityResult(
@@ -366,6 +395,7 @@ private fun MusicBoxApp(container: AppContainer, spec: ThemeSpec, coverSeed: Col
                     PlayerScreen(
                         state = playState,
                         source = connection,
+                        background = backgroundSpec,
                         modeLabel = mode.label,
                         isFavorite = playState.currentSongId?.let(libraryVm::isFavorite) == true,
                         immersive = immersive,
@@ -498,6 +528,21 @@ private fun MusicBoxApp(container: AppContainer, spec: ThemeSpec, coverSeed: Col
             },
             onDesktopLyricFontSp = container.settings::setDesktopLyricFontSp,
             onDesktopLyricColorArgb = container.settings::setDesktopLyricColorArgb,
+            backgroundLabel = when (backgroundSpec.type) {
+                BackgroundType.Cover -> "当前：封面模糊"
+                BackgroundType.Image -> "当前：自定义图片"
+                BackgroundType.Video -> "当前：自定义视频"
+            },
+            onPickBackgroundImage = {
+                backgroundImagePicker.launch(
+                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
+                )
+            },
+            onPickBackgroundVideo = { backgroundVideoPicker.launch("video/*") },
+            onResetBackground = {
+                container.settings.resetBackground()
+                container.backgroundStore.clearAll()
+            },
             logText = container.log::readAll,
             onClearLog = container.log::clear,
             onBack = { showSettings = false },

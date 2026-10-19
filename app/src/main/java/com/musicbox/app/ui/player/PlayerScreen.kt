@@ -39,8 +39,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.musicbox.app.data.BackgroundSpec
 import com.musicbox.app.player.PositionSource
-import com.musicbox.app.ui.components.BlurredBackdrop
+import com.musicbox.app.ui.components.BackgroundLayer
 import com.musicbox.app.ui.components.GlassCard
 import com.musicbox.app.ui.components.ParticleField
 import com.musicbox.app.ui.components.VinylRecord
@@ -65,6 +66,7 @@ import com.musicbox.app.ui.components.rememberFlowProgress
 internal fun PlayerScreen(
     state: PlaybackUiState,
     source: PositionSource,
+    background: BackgroundSpec,
     modeLabel: String,
     isFavorite: Boolean,
     immersive: Boolean,
@@ -91,8 +93,12 @@ internal fun PlayerScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.surface),
     ) {
-        // 最底层：封面放大 → 模糊（API 31+ 真模糊 / 26–30 位图降采样近似）→ 遮罩
-        BlurredBackdrop(url = state.artworkUrl, modifier = Modifier.fillMaxSize())
+        // 最底层：自定义背景（视频 > 图片 > 封面模糊），失败自动回退封面模糊
+        BackgroundLayer(
+            spec = background,
+            coverUrl = state.artworkUrl,
+            modifier = Modifier.fillMaxSize(),
+        )
 
         // 粒子层：在背景之上、玻璃卡片之下。纯装饰，不拦截点击；暂停即静止
         ParticleField(

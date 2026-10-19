@@ -1,0 +1,148 @@
+package com.musicbox.app.ui.components
+
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.net.Uri
+import android.view.SurfaceView
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
+import com.musicbox.app.data.BackgroundSpec
+import com.musicbox.app.data.BackgroundType
+import java.io.File
+
+/** 自定义背景位图解码的最大边长（像素），避免超大原图占满内存。 */
+private const val BACKGROUND_MAX_EDGE = 1024
+
+/**
+ * 计算两遍解码的采样率：保证解码后最长边 ≤ [maxEdge]，且为 2 的幂。
+ * 尺寸非法（≤0）或 [maxEdge] 非法时返回 1。纯函数，便于 JVM 单测。
+ */
+fun backgroundBitmapInSampleSize(width: Int, height: Int, maxEdge: Int = BACKGROUND_MAX_EDGE): Int {
+    if (width <= 0 || height <= 0 || maxEdge <= 0) return 1
+    var sample = 1
+    val longest = maxOf(width, height)
+    while (longest / sample > maxEdge) sample *= 2
+    return sample
+}
+
+/**
+ * 播放页最底层背景层。
+ *
+ * 优先级（与设计一致）：视频（可用时）> 自定义图片 > 封面模糊。
+ * - 视频：ExoPlayer 播放本机文件，静音循环；绑定 SurfaceView 渲染。解码/绑定失败 → [onError]。
+ * - 图片：BitmapFactory 采样解码后走 [BlurScrimBitmap] 毛玻璃路径；解码失败 → 回退封面模糊。
+ * - 封面：复用 [BlurredBackdrop]。
+ *
+ * 纯装饰层：不拦截点击；任何素材不可用都回退到可用的下一档，不崩溃。
+ */
+@Composable
+fun BackgroundLayer(
+    spec: BackgroundSpec,
+    coverUrl: String?,
+    modifier: Modifier = Modifier,
+) {
+    val path = spec.path
+    // 视频不可用（解码失败/绑定失败）时回退封面模糊；切换素材时重置
+    var videoFailed by remember(spec.path) { mutableStateOf(false) }
+
+    when {
+        spec.type == BackgroundType.Video && path != null && !videoFailed ->
+            VideoBackground(path = path, onError = { videoFailed = true }, modifier = modifier)
+
+        spec.type == BackgroundType.Image && path != null -> {
+            val bitmap = rememberLocalBitmap(path)
+            if (bitmap != null) {
+                BlurScrimBitmap(bitmap = bitmap, modifier = modifier)
+            } else {
+                BlurredBackdrop(url = coverUrl, modifier = modifier)
+            }
+        }
+
+        else -> BlurredBackdrop(url = coverUrl, modifier = modifier)
+    }
+}
+
+/** 从本地文件两遍采样解码位图；文件不存在 / 解码失败返回 null，不抛异常。 */
+@Composable
+private fun rememberLocalBitmap(path: String?): Bitmap? = remember(path) { decodeLocalBitmap(path) }
+
+private fun decodeLocalBitmap(path: String?): Bitmap? {
+    if (path == null) return null
+    return try {
+        val file = File(path)
+        if (!file.exists()) return null
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(path, bounds)
+        val sample = backgroundBitmapInSampleSize(bounds.outWidth, bounds.outHeight)
+        val options = BitmapFactory.Options().apply { inSampleSize = sample }
+        BitmapFactory.decodeFile(path, options)
+    } catch (_: Throwable) {
+        null
+    }
+}
+
+/**
+ * 视频背景：ExoPlayer 循环播放本机文件（静音），绑定 [SurfaceView] 渲染。
+ *
+ * 未使用 `androidx.media3.ui.PlayerView`（项目未依赖 `media3-ui`），
+ * 而是直接用 [Player.setVideoSurfaceView] 绑定自建 SurfaceView。
+ * 任何异常 → [onError]，由上层回退到封面模糊。
+ */
+@Composable
+private fun VideoBackground(path: String, onError: () -> Unit, modifier: Modifier) {
+    val context = LocalContext.current
+    val player = remember(path) { ExoPlayer.Builder(context).build() }
+    // onError 每次重组都会新建 lambda，用 rememberUpdatedState 避免 effect 依赖抖动
+    val currentOnError by rememberUpdatedState(onError)
+
+    DisposableEffect(player) {
+        val listener = object : Player.Listener {
+            override fun onPlayerError(error: PlaybackException) {
+                currentOnError()
+            }
+        }
+        player.addListener(listener)
+        onDispose {
+            runCatching {
+                player.removeListener(listener)
+                player.clearVideoSurface()
+                player.release()
+            }
+        }
+    }
+
+    LaunchedEffect(path, player) {
+        try {
+            player.setMediaItem(MediaItem.fromUri(Uri.fromFile(File(path))))
+            player.repeatMode = Player.REPEAT_MODE_ALL
+            player.volume = 0f
+            player.playWhenReady = true
+            player.prepare()
+        } catch (_: Throwable) {
+            currentOnError()
+        }
+    }
+
+    AndroidView(
+        factory = { ctx ->
+            SurfaceView(ctx).also { surfaceView ->
+                runCatching { player.setVideoSurfaceView(surfaceView) }
+                    .onFailure { currentOnError() }
+            }
+        },
+        modifier = modifier,
+    )
+}
