@@ -1,9 +1,12 @@
 package com.musicbox.app
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -32,6 +35,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -41,6 +45,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.musicbox.app.desktoplyric.DesktopLyricService
 import com.musicbox.app.model.Song
 import com.musicbox.app.ui.BottomTabs
 import com.musicbox.app.ui.LocalPageSeed
@@ -64,6 +69,7 @@ import com.musicbox.app.ui.search.SearchViewModel
 import com.musicbox.app.ui.settings.SettingsScreen
 import com.musicbox.app.ui.theme.SeedSource
 import com.musicbox.app.ui.theme.ThemeSpec
+import kotlinx.coroutines.launch
 
 /** 按来源解析当前生效的主题 seed。壁纸取色在低版本/取色失败时返回 null。 */
 private fun resolveSeed(
@@ -145,6 +151,9 @@ private fun MusicBoxApp(container: AppContainer, spec: ThemeSpec, coverSeed: Col
     val showTranslationPref by container.settings.showTranslation.collectAsStateWithLifecycle()
     val showRomajiPref by container.settings.showRomaji.collectAsStateWithLifecycle()
     val fallbackUrl by container.settings.fallbackBaseUrl.collectAsStateWithLifecycle()
+    val desktopLyricEnabled by container.settings.desktopLyricEnabled.collectAsStateWithLifecycle()
+    val desktopLyricFontSp by container.settings.desktopLyricFontSp.collectAsStateWithLifecycle()
+    val desktopLyricColorArgb by container.settings.desktopLyricColorArgb.collectAsStateWithLifecycle()
     val session by container.sessionStore.session.collectAsStateWithLifecycle()
     val favorites by libraryVm.favorites.collectAsStateWithLifecycle()
     val history by libraryVm.history.collectAsStateWithLifecycle()
@@ -154,6 +163,33 @@ private fun MusicBoxApp(container: AppContainer, spec: ThemeSpec, coverSeed: Col
     LaunchedEffect(showRomajiPref) { lyricVm.setShowRomaji(showRomajiPref) }
 
     val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+
+    // 桌面歌词悬浮窗：无权限时跳系统「显示在其他应用上层」设置页，返回后回读状态再决定启停
+    val overlayPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) {
+        if (Settings.canDrawOverlays(context)) {
+            container.settings.setDesktopLyricEnabled(true)
+            ContextCompat.startForegroundService(
+                context,
+                Intent(context, DesktopLyricService::class.java),
+            )
+        } else {
+            scope.launch { snackbarHostState.showSnackbar("未授予悬浮窗权限，桌面歌词未开启") }
+        }
+    }
+
+    // App 重进时恢复：开关已开且权限仍在 → 重新拉起悬浮窗服务
+    LaunchedEffect(Unit) {
+        if (desktopLyricEnabled && Settings.canDrawOverlays(context)) {
+            ContextCompat.startForegroundService(
+                context,
+                Intent(context, DesktopLyricService::class.java),
+            )
+        }
+    }
+
     var tab by remember { mutableStateOf(MainTab.SEARCH) }
     var showPlayer by remember { mutableStateOf(false) }
     var showLyric by remember { mutableStateOf(false) }
@@ -190,6 +226,10 @@ private fun MusicBoxApp(container: AppContainer, spec: ThemeSpec, coverSeed: Col
     // 用已有的 250ms 播放位置驱动迷你条当前行文本（不额外引入逐帧时钟）
     LaunchedEffect(playState.positionMs, lyricState, showTranslationPref) {
         lyricVm.updatePosition(playState.positionMs)
+    }
+    // 有歌 / 播没播 变化 → 刷新桌面歌词悬浮窗的可见性与播放态（行级，与位置解耦）
+    LaunchedEffect(playState.hasCurrent, playState.isPlaying) {
+        lyricVm.updatePlayback(playState.hasCurrent, playState.isPlaying)
     }
 
     // 一次性提示
@@ -415,6 +455,9 @@ private fun MusicBoxApp(container: AppContainer, spec: ThemeSpec, coverSeed: Col
             fallbackBaseUrl = fallbackUrl,
             lyricCacheCount = container.lyricDiskCache.size(),
             themeSpec = spec,
+            desktopLyricEnabled = desktopLyricEnabled,
+            desktopLyricFontSp = desktopLyricFontSp,
+            desktopLyricColorArgb = desktopLyricColorArgb,
             onToggleTranslation = container.settings::setShowTranslation,
             onToggleRomaji = container.settings::setShowRomaji,
             onSaveFallbackUrl = container.settings::setFallbackBaseUrl,
@@ -428,6 +471,32 @@ private fun MusicBoxApp(container: AppContainer, spec: ThemeSpec, coverSeed: Col
             onSeparatePlayerTheme = container.settings::setSeparatePlayerTheme,
             onPlayerSeedSource = container.settings::setPlayerSeedSource,
             onPlayerFixedSeedArgb = container.settings::setPlayerFixedSeedArgb,
+            onDesktopLyricEnabled = { want ->
+                when {
+                    // 关闭：清偏好并停服务
+                    !want -> {
+                        container.settings.setDesktopLyricEnabled(false)
+                        context.stopService(Intent(context, DesktopLyricService::class.java))
+                    }
+                    // 已授权：直接开
+                    Settings.canDrawOverlays(context) -> {
+                        container.settings.setDesktopLyricEnabled(true)
+                        ContextCompat.startForegroundService(
+                            context,
+                            Intent(context, DesktopLyricService::class.java),
+                        )
+                    }
+                    // 未授权：跳系统授权页，返回后由 launcher 回调决定
+                    else -> overlayPermissionLauncher.launch(
+                        Intent(
+                            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                            Uri.parse("package:${context.packageName}"),
+                        ),
+                    )
+                }
+            },
+            onDesktopLyricFontSp = container.settings::setDesktopLyricFontSp,
+            onDesktopLyricColorArgb = container.settings::setDesktopLyricColorArgb,
             logText = container.log::readAll,
             onClearLog = container.log::clear,
             onBack = { showSettings = false },

@@ -107,4 +107,48 @@ class LyricTimelineTest {
         // 14_500 落在第 1 行结束(14_000)与第 2 行开始(15_000)之间的空隙 → 仍返回第 1 行
         assertEquals("L13000", timeline.currentLineTextAt(14_500, includeTranslation = false))
     }
+
+    @Test
+    fun `nextLineTextAt returns the line after the current one`() {
+        // 第 0 行（10_000 起）→ 下一行是第 1 行
+        assertEquals("L13000", timeline.nextLineTextAt(10_000, includeTranslation = false))
+        // 空隙期仍算第 0 行 → 下一行不变
+        assertEquals("L13000", timeline.nextLineTextAt(12_999, includeTranslation = false))
+        // 第 1 行（13_500）→ 下一行是第 2 行
+        assertEquals("L15000", timeline.nextLineTextAt(13_500, includeTranslation = false))
+    }
+
+    @Test
+    fun `nextLineTextAt returns empty on the last line`() {
+        assertEquals("", timeline.nextLineTextAt(15_000, includeTranslation = false))
+        assertEquals("", timeline.nextLineTextAt(99_999, includeTranslation = true))
+    }
+
+    @Test
+    fun `nextLineTextAt treats before-first as index minus one so next is the first line`() {
+        assertEquals("L10000", timeline.nextLineTextAt(0, includeTranslation = false))
+        assertEquals("L10000", timeline.nextLineTextAt(9_999, includeTranslation = false))
+    }
+
+    @Test
+    fun `nextLineTextAt joins translation and ignores blank translation`() {
+        val t = LyricTimeline(
+            listOf(
+                LyricLine(startMs = 1_000, durationMs = 1_000, text = "第一", translation = "译一"),
+                LyricLine(startMs = 3_000, durationMs = 1_000, text = "第二", translation = "译二"),
+                LyricLine(startMs = 5_000, durationMs = 1_000, text = "第三", translation = "  "),
+            ),
+        )
+        // 第 0 行时下一行（第 1 行）带译文 → 拼接
+        assertEquals("第二 · 译二", t.nextLineTextAt(1_500, includeTranslation = true))
+        // 关掉译文开关只取原文
+        assertEquals("第二", t.nextLineTextAt(1_500, includeTranslation = false))
+        // 第 1 行时下一行（第 2 行）译文为空白 → 只取原文
+        assertEquals("第三", t.nextLineTextAt(3_500, includeTranslation = true))
+    }
+
+    @Test
+    fun `nextLineTextAt on an empty timeline returns empty`() {
+        assertEquals("", LyricTimeline(emptyList()).nextLineTextAt(1_000, includeTranslation = true))
+    }
 }

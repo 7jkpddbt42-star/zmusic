@@ -92,5 +92,22 @@ fun LyricTimeline.currentLineTextAt(positionMs: Long, includeTranslation: Boolea
     }
 }
 
+/**
+ * 桌面歌词应显示的"下一行文本"（纯函数，便于单测）。
+ * - 取当前行下标的**下一行**；下一行不存在（末行 / 空时间轴）返回空串；
+ * - 当前行不存在（[indexAt] 为 -1，即第一行开始之前）时按第 0 行处理，
+ *   于是下一行为首行；
+ * - [includeTranslation] 规则同 [currentLineTextAt]。
+ */
+fun LyricTimeline.nextLineTextAt(positionMs: Long, includeTranslation: Boolean): String {
+    val next = lines.getOrNull(indexAt(positionMs) + 1) ?: return ""
+    val translation = next.translation
+    return if (includeTranslation && !translation.isNullOrBlank()) {
+        "${next.text} · $translation"
+    } else {
+        next.text
+    }
+}
+
 /** 未使用，仅供 LyricData 的可见性提醒：解析器入口吃的是 LyricData。 */
 internal typealias RawLyric = LyricData

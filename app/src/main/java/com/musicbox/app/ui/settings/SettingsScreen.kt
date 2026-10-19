@@ -51,6 +51,14 @@ private val PRESET_COLORS: List<Int> = listOf(
     0xFF6B7280.toInt(),
 )
 
+/** 桌面歌词可选颜色：白 / 黄 / 青 / 淡粉，均保证深色胶囊上的可读性。 */
+private val DESKTOP_LYRIC_COLORS: List<Int> = listOf(
+    0xFFFFFFFF.toInt(),
+    0xFFFFD54F.toInt(),
+    0xFF80DEEA.toInt(),
+    0xFFFF9EC7.toInt(),
+)
+
 private val WALLPAPER_AVAILABLE = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
 
 @Composable
@@ -60,6 +68,9 @@ fun SettingsScreen(
     fallbackBaseUrl: String,
     lyricCacheCount: Int,
     themeSpec: ThemeSpec,
+    desktopLyricEnabled: Boolean,
+    desktopLyricFontSp: Int,
+    desktopLyricColorArgb: Int,
     onToggleTranslation: (Boolean) -> Unit,
     onToggleRomaji: (Boolean) -> Unit,
     onSaveFallbackUrl: (String) -> Unit,
@@ -70,6 +81,9 @@ fun SettingsScreen(
     onSeparatePlayerTheme: (Boolean) -> Unit,
     onPlayerSeedSource: (SeedSource) -> Unit,
     onPlayerFixedSeedArgb: (Int) -> Unit,
+    onDesktopLyricEnabled: (Boolean) -> Unit,
+    onDesktopLyricFontSp: (Int) -> Unit,
+    onDesktopLyricColorArgb: (Int) -> Unit,
     logText: () -> String,
     onClearLog: () -> Unit,
     onBack: () -> Unit,
@@ -183,6 +197,44 @@ fun SettingsScreen(
 
         HorizontalDivider(modifier = Modifier.padding(vertical = 20.dp))
 
+        Text("桌面歌词", style = MaterialTheme.typography.titleMedium)
+        Text(
+            "在系统悬浮窗中显示当前歌词，可拖动到任意位置。首次开启需要授予「显示在其他应用上层」权限。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 4.dp),
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("启用桌面歌词", modifier = Modifier.weight(1f))
+            Switch(checked = desktopLyricEnabled, onCheckedChange = onDesktopLyricEnabled)
+        }
+        Text(
+            "字号",
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.padding(top = 12.dp),
+        )
+        Row(modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
+            ChoiceChip("小", desktopLyricFontSp == 16) { onDesktopLyricFontSp(16) }
+            ChoiceChip("中", desktopLyricFontSp == 20) { onDesktopLyricFontSp(20) }
+            ChoiceChip("大", desktopLyricFontSp == 24) { onDesktopLyricFontSp(24) }
+        }
+        Text(
+            "颜色",
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.padding(top = 12.dp),
+        )
+        PaletteRow(
+            selectedArgb = desktopLyricColorArgb,
+            onSelect = onDesktopLyricColorArgb,
+            modifier = Modifier.padding(top = 4.dp),
+            colors = DESKTOP_LYRIC_COLORS,
+        )
+
+        HorizontalDivider(modifier = Modifier.padding(vertical = 20.dp))
+
         Text("备用音源地址", style = MaterialTheme.typography.titleMedium)
         Text(
             "默认留空。仅在端上签名路径临时失效时作为应急兜底，不参与正常流程。",
@@ -272,19 +324,20 @@ private fun ChoiceChip(
     }
 }
 
-/** 8 个预设色等分铺满一行，选中项加粗描边。 */
+/** 调色板等分铺满一行，选中项加粗描边。[colors] 默认 8 个主题预设色。 */
 @Composable
 private fun PaletteRow(
     selectedArgb: Int,
     onSelect: (Int) -> Unit,
     modifier: Modifier = Modifier,
+    colors: List<Int> = PRESET_COLORS,
 ) {
     val outlineColor = MaterialTheme.colorScheme.onSurface
     Row(
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        PRESET_COLORS.forEach { argb ->
+        colors.forEach { argb ->
             Box(
                 modifier = Modifier
                     .weight(1f)

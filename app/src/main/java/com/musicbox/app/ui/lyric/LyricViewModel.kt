@@ -6,6 +6,7 @@ import com.musicbox.app.data.LyricDiskCache
 import com.musicbox.app.lyric.LyricParser
 import com.musicbox.app.lyric.LyricTimeline
 import com.musicbox.app.lyric.currentLineTextAt
+import com.musicbox.app.lyric.nextLineTextAt
 import com.musicbox.app.lyric.sharedLyricCache
 import com.musicbox.app.source.MusicProvider
 import kotlinx.coroutines.Dispatchers
@@ -59,6 +60,12 @@ class LyricViewModel(
     /** 最近一次的播放位置，用于切换译文开关时立即重算当前行文本。 */
     private var lastPositionMs: Long = 0L
 
+    /** 当前是否有歌曲（[updatePlayback] 注入）——桌面歌词悬浮窗是否该显示的开关。 */
+    private var hasCurrent: Boolean = false
+
+    /** 当前是否在播放（[updatePlayback] 注入），供悬浮窗渲染播放/暂停态。 */
+    private var playing: Boolean = false
+
     init {
         connectivity?.let { flow ->
             viewModelScope.launch {
@@ -91,6 +98,37 @@ class LyricViewModel(
         val timeline = (_state.value as? LyricUiState.Ready)?.timeline
         val text = timeline?.currentLineTextAt(positionMs, _showTranslation.value).orEmpty()
         if (text != _currentLineText.value) _currentLineText.value = text
+        publishOverlay()
+    }
+
+    /**
+     * 由 UI 收集的播放状态驱动，刷新桌面歌词悬浮窗的可见性与播放态。
+     * 与位置驱动解耦：可见性只在"有没有歌 / 播没播"变化时才需要。
+     */
+    fun updatePlayback(hasCurrent: Boolean, isPlaying: Boolean) {
+        this.hasCurrent = hasCurrent
+        this.playing = isPlaying
+        publishOverlay()
+    }
+
+    /**
+     * 向 [LyricBus] 发布**行级**悬浮窗状态（[LyricBus] 内部已去重）。
+     * 仅"有歌且歌词 Ready"才可见，否则一律发 EMPTY，让悬浮窗隐藏。
+     */
+    private fun publishOverlay() {
+        val timeline = (_state.value as? LyricUiState.Ready)?.timeline
+        if (hasCurrent && timeline != null) {
+            LyricBus.publish(
+                LyricOverlayState(
+                    visible = true,
+                    currentLine = _currentLineText.value,
+                    nextLine = timeline.nextLineTextAt(lastPositionMs, _showTranslation.value),
+                    isPlaying = playing,
+                ),
+            )
+        } else {
+            LyricBus.publish(LyricOverlayState.EMPTY)
+        }
     }
 
     /** 歌词页"重试"按钮：忽略缓存重新拉。 */
@@ -105,6 +143,8 @@ class LyricViewModel(
             loadedSongId = null
             _currentLineText.value = ""
             _state.value = LyricUiState.Idle
+            // 无当前歌：桌面歌词悬浮窗立即隐藏
+            LyricBus.publish(LyricOverlayState.EMPTY)
             return
         }
         if (songId == loadedSongId) return
@@ -116,6 +156,8 @@ class LyricViewModel(
         job?.cancel()
         // 进入新歌的加载（含 Loading）：清空上一首遗留的当前行文本
         _currentLineText.value = ""
+        // 新歌歌词尚未 Ready：先隐藏悬浮窗，待 Ready 后由位置驱动重新发布
+        LyricBus.publish(LyricOverlayState.EMPTY)
 
         if (useMemoryCache) {
             memoryCache.get(songId)?.let {
