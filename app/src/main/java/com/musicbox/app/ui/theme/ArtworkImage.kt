@@ -34,6 +34,30 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
 /**
+ * 观察某 URL 的封面位图，返回可被重组读取的 [Bitmap]?。
+ *
+ * - 命中 [memoryCache] 时**同步**返回（首次组合即可用，不闪烁）。
+ * - 未命中时启动一次异步加载，完成后写入状态并触发重组。
+ * - url 为空或加载失败返回 null，不抛异常。
+ *
+ * [ArtworkImage] 与 `BlurredBackdrop` 共用本函数，避免重复的解码与状态逻辑。
+ */
+@Composable
+fun rememberArtworkBitmap(url: String?): Bitmap? {
+    var bitmap by remember(url) { mutableStateOf(url?.let { memoryCache.get(it) }) }
+
+    LaunchedEffect(url) {
+        if (url == null) return@LaunchedEffect
+        if (bitmap == null) {
+            val loaded = load(url).await()
+            if (loaded != null) bitmap = loaded
+        }
+    }
+
+    return bitmap
+}
+
+/**
  * 封面异步加载 Composable。自建轻量加载器：OkHttp + BitmapFactory 采样 + 内存 LruCache，
  * 不引入 Coil/Glide，规避新依赖与 Kotlin/AGP 的兼容风险。
  *
@@ -49,15 +73,7 @@ fun ArtworkImage(
     shape: Shape = RectangleShape,
     onBitmap: ((Bitmap) -> Unit)? = null,
 ) {
-    var bitmap by remember(url) { mutableStateOf(url?.let { memoryCache.get(it) }) }
-
-    LaunchedEffect(url) {
-        if (url == null) return@LaunchedEffect
-        if (bitmap == null) {
-            val loaded = load(url).await()
-            if (loaded != null) bitmap = loaded
-        }
-    }
+    val bitmap = rememberArtworkBitmap(url)
 
     // 解码成功（含缓存命中）即回调一次，供取色使用；url/bitmap 变化时才会重新触发
     LaunchedEffect(url, bitmap) {

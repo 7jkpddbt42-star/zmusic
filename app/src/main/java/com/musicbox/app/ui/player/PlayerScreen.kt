@@ -2,9 +2,12 @@ package com.musicbox.app.ui.player
 
 import android.graphics.Bitmap
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -20,7 +23,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -34,11 +36,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.musicbox.app.ui.components.BlurredBackdrop
+import com.musicbox.app.ui.components.GlassCard
 import com.musicbox.app.ui.theme.ArtworkImage
 
 /**
- * 全屏播放页。MI-2 只保证能控制与信息完整（含试听标注），
- * 封面取色、过渡动画、图标体系等视觉打磨留给 MI-4。
+ * 全屏播放页。
+ *
+ * 视觉分层（自下而上）：玻璃背景层（封面模糊 + 遮罩）→ 透明顶栏 → 清晰封面 →
+ * 信息区玻璃卡片 → 控制区玻璃卡片。
+ * 封面本身保持清晰（不参与背景模糊），[ArtworkImage] 的 `onBitmap` 继续驱动封面取色。
  */
 @Composable
 internal fun PlayerScreen(
@@ -59,11 +66,19 @@ internal fun PlayerScreen(
 ) {
     BackHandler(onBack = onCollapse)
 
-    Surface(modifier = modifier.fillMaxSize()) {
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.surface),
+    ) {
+        // 最底层：封面放大 → 模糊（API 31+ 真模糊 / 26–30 位图降采样近似）→ 遮罩
+        BlurredBackdrop(url = state.artworkUrl, modifier = Modifier.fillMaxSize())
+
         Column(
             modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
+            // 顶栏保持透明：不加玻璃，位置与交互（收起 / 队列）不变
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 TextButton(onClick = onCollapse) { Text("收起") }
                 Text(
@@ -99,79 +114,97 @@ internal fun PlayerScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(28.dp))
-            Text(
-                text = state.title.orEmpty(),
-                style = MaterialTheme.typography.headlineSmall,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                textAlign = TextAlign.Center,
-            )
-            Spacer(modifier = Modifier.height(6.dp))
-            Text(
-                text = state.artist.orEmpty(),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            if (state.isTrial) {
-                Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(20.dp))
+            // 信息区：标题 / 歌手 / 试听标注 —— 玻璃卡片
+            GlassCard(
+                modifier = Modifier.fillMaxWidth(),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
+            ) {
                 Text(
-                    text = "试听片段 · 登录解锁完整版",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary,
+                    text = state.title.orEmpty(),
+                    style = MaterialTheme.typography.headlineSmall,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth(),
                 )
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = state.artist.orEmpty(),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                if (state.isTrial) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(
+                        text = "试听片段 · 登录解锁完整版",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
             }
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(12.dp))
+
             var dragging by remember { mutableStateOf(false) }
             var dragValue by remember { mutableFloatStateOf(0f) }
             val max = state.durationMs.coerceAtLeast(1L).toFloat()
             val shown = if (dragging) dragValue else state.positionMs.toFloat()
 
-            Slider(
-                value = shown.coerceIn(0f, max),
-                onValueChange = {
-                    dragging = true
-                    dragValue = it
-                },
-                onValueChangeFinished = {
-                    onSeek(dragValue.toLong())
-                    dragging = false
-                },
-                valueRange = 0f..max,
+            // 控制区：进度条 + 时间 + 控制按钮行 —— 玻璃卡片
+            GlassCard(
                 modifier = Modifier.fillMaxWidth(),
-            )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
             ) {
-                Text(text = formatTime(shown.toLong()), style = MaterialTheme.typography.labelSmall)
-                Text(text = formatTime(state.durationMs), style = MaterialTheme.typography.labelSmall)
-            }
+                Slider(
+                    value = shown.coerceIn(0f, max),
+                    onValueChange = {
+                        dragging = true
+                        dragValue = it
+                    },
+                    onValueChangeFinished = {
+                        onSeek(dragValue.toLong())
+                        dragging = false
+                    },
+                    valueRange = 0f..max,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text(text = formatTime(shown.toLong()), style = MaterialTheme.typography.labelSmall)
+                    Text(text = formatTime(state.durationMs), style = MaterialTheme.typography.labelSmall)
+                }
 
-            Spacer(modifier = Modifier.height(8.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                TextButton(onClick = onCycleMode) { Text(modeLabel) }
-                TextButton(onClick = onPrevious) {
-                    Text("⏮", style = MaterialTheme.typography.headlineSmall)
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    TextButton(onClick = onCycleMode) { Text(modeLabel) }
+                    TextButton(onClick = onPrevious) {
+                        Text("⏮", style = MaterialTheme.typography.headlineSmall)
+                    }
+                    TextButton(onClick = onTogglePlay) {
+                        Text(
+                            text = if (state.isPlaying) "⏸" else "▶",
+                            style = MaterialTheme.typography.displaySmall,
+                        )
+                    }
+                    TextButton(onClick = onNext) {
+                        Text("⏭", style = MaterialTheme.typography.headlineSmall)
+                    }
+                    // 占位保持左右对称，避免按钮横向跳动
+                    TextButton(onClick = {}, enabled = false) { Text(" ") }
                 }
-                TextButton(onClick = onTogglePlay) {
-                    Text(
-                        text = if (state.isPlaying) "⏸" else "▶",
-                        style = MaterialTheme.typography.displaySmall,
-                    )
-                }
-                TextButton(onClick = onNext) {
-                    Text("⏭", style = MaterialTheme.typography.headlineSmall)
-                }
-                // 占位保持左右对称，避免按钮横向跳动
-                TextButton(onClick = {}, enabled = false) { Text(" ") }
             }
 
             if (state.isBuffering) {
