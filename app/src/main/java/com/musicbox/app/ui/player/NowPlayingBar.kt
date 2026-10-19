@@ -16,9 +16,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.musicbox.app.ui.theme.ArtworkImage
 
 /** 底部迷你播放条。点整条打开播放页，右侧按钮直接播放/暂停。 */
 @Composable
@@ -59,9 +59,10 @@ internal fun NowPlayingBar(
                 modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Artwork(
+                ArtworkImage(
                     url = state.artworkUrl,
-                    modifier = Modifier.size(40.dp).clip(RoundedCornerShape(6.dp)),
+                    modifier = Modifier.size(40.dp),
+                    shape = RoundedCornerShape(6.dp),
                 )
                 Column(modifier = Modifier.weight(1f).padding(horizontal = 10.dp)) {
                     Text(

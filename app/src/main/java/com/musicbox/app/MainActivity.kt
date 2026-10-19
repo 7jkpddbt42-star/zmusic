@@ -16,6 +16,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -23,6 +24,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -31,6 +33,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.musicbox.app.model.Song
 import com.musicbox.app.ui.BottomTabs
+import com.musicbox.app.ui.LocalPageSeed
 import com.musicbox.app.ui.MainTab
 import com.musicbox.app.ui.MusicBoxTheme
 import com.musicbox.app.ui.library.FavoriteScreen
@@ -49,15 +52,35 @@ import com.musicbox.app.ui.player.QueueSheet
 import com.musicbox.app.ui.search.SearchScreen
 import com.musicbox.app.ui.search.SearchViewModel
 import com.musicbox.app.ui.settings.SettingsScreen
+import com.musicbox.app.ui.theme.SeedSource
+import com.musicbox.app.ui.theme.ThemeSpec
+
+/** 按来源解析当前生效的主题 seed。壁纸取色在低版本/取色失败时返回 null。 */
+private fun resolveSeed(
+    source: SeedSource,
+    fixedArgb: Int,
+    coverSeed: Color?,
+    container: AppContainer,
+): Color? = when (source) {
+    SeedSource.Cover -> coverSeed
+    SeedSource.Wallpaper -> container.wallpaperSeed()
+    SeedSource.Fixed -> Color(fixedArgb)
+}
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val container = AppContainer(this)
         setContent {
-            MusicBoxTheme {
+            val spec by container.settings.themeSpec.collectAsStateWithLifecycle()
+            val coverSeed by container.artworkTheme.seed.collectAsStateWithLifecycle()
+            // 主页 seed：按主 seedSource 解析（壁纸/固定色不依赖封面）
+            val mainSeed = remember(spec.seedSource, spec.fixedSeedArgb, coverSeed) {
+                resolveSeed(spec.seedSource, spec.fixedSeedArgb, coverSeed, container)
+            }
+            MusicBoxTheme(spec = spec, seed = mainSeed) {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    MusicBoxApp(container)
+                    MusicBoxApp(container, spec, coverSeed)
                 }
             }
         }
@@ -65,7 +88,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun MusicBoxApp(container: AppContainer) {
+private fun MusicBoxApp(container: AppContainer, spec: ThemeSpec, coverSeed: Color?) {
     val context = LocalContext.current
 
     // MediaController 的连接随 Composition 建立与释放
@@ -243,44 +266,70 @@ private fun MusicBoxApp(container: AppContainer) {
         }
     }
 
-    if (showPlayer && showLyric) {
-        LyricScreen(
-            state = lyricState,
-            source = connection,
-            title = playState.title,
-            artist = playState.artist,
-            showTranslation = showTranslationPref,
-            showRomaji = showRomajiPref,
-            onToggleTranslation = {
-                container.settings.setShowTranslation(!showTranslationPref)
-            },
-            onToggleRomaji = {
-                container.settings.setShowRomaji(!showRomajiPref)
-            },
-            onSeek = playerVm::seekTo,
-            onCollapse = { showLyric = false },
-        )
-    } else if (showPlayer) {
-        PlayerScreen(
-            state = playState,
-            modeLabel = mode.label,
-            isFavorite = playState.currentSongId?.let(libraryVm::isFavorite) == true,
-            onToggleFavorite = {
-                val id = playState.currentSongId ?: return@PlayerScreen
-                val song = searchState.results.firstOrNull { it.id == id }
-                    ?: history.firstOrNull { it.song.id == id }?.song
-                    ?: favorites.firstOrNull { it.song.id == id }?.song
-                if (song != null) libraryVm.toggleFavorite(song)
-            },
-            onCollapse = { showPlayer = false },
-            onTogglePlay = playerVm::togglePlay,
-            onNext = playerVm::next,
-            onPrevious = playerVm::previous,
-            onSeek = playerVm::seekTo,
-            onCycleMode = playerVm::cyclePlayMode,
-            onOpenQueue = { showQueue = true },
-            onOpenLyric = { showLyric = true },
-        )
+    // 分控主题：开启时播放页/歌词页用 player seed 覆写 LocalPageSeed，主页保持主 seed
+    val playerSeed = remember(
+        spec.separatePlayerTheme,
+        spec.playerSeedSource,
+        spec.playerFixedSeedArgb,
+        coverSeed,
+    ) {
+        if (spec.separatePlayerTheme) {
+            resolveSeed(spec.playerSeedSource, spec.playerFixedSeedArgb, coverSeed, container)
+        } else {
+            null
+        }
+    }
+
+    val playerLayer: @Composable () -> Unit = {
+        if (showPlayer && showLyric) {
+            LyricScreen(
+                state = lyricState,
+                source = connection,
+                title = playState.title,
+                artist = playState.artist,
+                showTranslation = showTranslationPref,
+                showRomaji = showRomajiPref,
+                onToggleTranslation = {
+                    container.settings.setShowTranslation(!showTranslationPref)
+                },
+                onToggleRomaji = {
+                    container.settings.setShowRomaji(!showRomajiPref)
+                },
+                onSeek = playerVm::seekTo,
+                onCollapse = { showLyric = false },
+            )
+        } else if (showPlayer) {
+            PlayerScreen(
+                state = playState,
+                modeLabel = mode.label,
+                isFavorite = playState.currentSongId?.let(libraryVm::isFavorite) == true,
+                onToggleFavorite = {
+                    val id = playState.currentSongId ?: return@PlayerScreen
+                    val song = searchState.results.firstOrNull { it.id == id }
+                        ?: history.firstOrNull { it.song.id == id }?.song
+                        ?: favorites.firstOrNull { it.song.id == id }?.song
+                    if (song != null) libraryVm.toggleFavorite(song)
+                },
+                onCollapse = { showPlayer = false },
+                onTogglePlay = playerVm::togglePlay,
+                onNext = playerVm::next,
+                onPrevious = playerVm::previous,
+                onSeek = playerVm::seekTo,
+                onCycleMode = playerVm::cyclePlayMode,
+                onOpenQueue = { showQueue = true },
+                onOpenLyric = { showLyric = true },
+                onArtworkLoaded = { container.artworkTheme.update(it) },
+            )
+        }
+    }
+
+    if (playerSeed != null) {
+        CompositionLocalProvider(LocalPageSeed provides playerSeed) {
+            // seed 传 null：由 LocalPageSeed 覆写为播放页专属 seed
+            MusicBoxTheme(spec = spec, seed = null) { playerLayer() }
+        }
+    } else {
+        playerLayer()
     }
 
     if (showQueue) {
@@ -314,6 +363,7 @@ private fun MusicBoxApp(container: AppContainer) {
             showRomaji = showRomajiPref,
             fallbackBaseUrl = fallbackUrl,
             lyricCacheCount = container.lyricDiskCache.size(),
+            themeSpec = spec,
             onToggleTranslation = container.settings::setShowTranslation,
             onToggleRomaji = container.settings::setShowRomaji,
             onSaveFallbackUrl = container.settings::setFallbackBaseUrl,
@@ -321,6 +371,12 @@ private fun MusicBoxApp(container: AppContainer) {
                 container.lyricDiskCache.clear()
                 showSettings = false
             },
+            onThemeMode = container.settings::setThemeMode,
+            onSeedSource = container.settings::setSeedSource,
+            onFixedSeedArgb = container.settings::setFixedSeedArgb,
+            onSeparatePlayerTheme = container.settings::setSeparatePlayerTheme,
+            onPlayerSeedSource = container.settings::setPlayerSeedSource,
+            onPlayerFixedSeedArgb = container.settings::setPlayerFixedSeedArgb,
             logText = container.log::readAll,
             onClearLog = container.log::clear,
             onBack = { showSettings = false },

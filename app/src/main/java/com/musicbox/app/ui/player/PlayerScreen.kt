@@ -1,5 +1,6 @@
 package com.musicbox.app.ui.player
 
+import android.graphics.Bitmap
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -30,10 +31,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.musicbox.app.ui.theme.ArtworkImage
 
 /**
  * 全屏播放页。MI-2 只保证能控制与信息完整（含试听标注），
@@ -53,6 +54,7 @@ internal fun PlayerScreen(
     onCycleMode: () -> Unit,
     onOpenQueue: () -> Unit,
     onOpenLyric: () -> Unit,
+    onArtworkLoaded: (Bitmap) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     BackHandler(onBack = onCollapse)
@@ -74,13 +76,14 @@ internal fun PlayerScreen(
             }
 
             Spacer(modifier = Modifier.height(24.dp))
-            Artwork(
+            ArtworkImage(
                 url = state.artworkUrl,
                 modifier = Modifier
                     .fillMaxWidth(0.78f)
                     .aspectRatio(1f)
-                    .clip(RoundedCornerShape(16.dp))
                     .clickable(onClick = onOpenLyric),
+                shape = RoundedCornerShape(16.dp),
+                onBitmap = onArtworkLoaded,
             )
             Spacer(modifier = Modifier.height(10.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {

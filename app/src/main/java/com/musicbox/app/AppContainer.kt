@@ -1,6 +1,9 @@
 package com.musicbox.app
 
+import android.app.WallpaperManager
 import android.content.Context
+import android.os.Build
+import androidx.compose.ui.graphics.Color
 import com.musicbox.app.data.AppLog
 import com.musicbox.app.data.FavoriteRepository
 import com.musicbox.app.data.HistoryRepository
@@ -16,6 +19,8 @@ import com.musicbox.app.source.netease.NetEaseLoginApi
 import com.musicbox.app.source.netease.NetEaseHeader
 import com.musicbox.app.source.netease.NetEaseProvider
 import com.musicbox.app.source.netease.OkHttpTransport
+import com.musicbox.app.ui.theme.ArtworkThemeState
+import com.musicbox.app.ui.theme.normalizeSeed
 import java.io.File
 
 /**
@@ -44,6 +49,25 @@ class AppContainer(context: Context) {
     val settings: SettingsRepository = SettingsRepository(kv)
 
     val sessionStore: SessionStore = SessionStore(kv)
+
+    /** 播放页封面取色的内存状态，供主题系统读取“封面取色”来源的 seed。 */
+    val artworkTheme = ArtworkThemeState()
+
+    /**
+     * 系统壁纸代表色（Android 12+）。低版本无 [WallpaperManager.getWallpaperColors]，
+     * 或取色异常时一律返回 null，调用方退回固定/封面 seed。
+     */
+    fun wallpaperSeed(): Color? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return null
+        return try {
+            val colors = WallpaperManager.getInstance(appContext)
+                .getWallpaperColors(WallpaperManager.FLAG_SYSTEM)
+            val primary = colors?.primaryColor ?: return null
+            normalizeSeed(Color(primary.toArgb()))
+        } catch (t: Throwable) {
+            null
+        }
+    }
 
     val log: AppLog = AppLog.forDir(filesDir("logs"))
 

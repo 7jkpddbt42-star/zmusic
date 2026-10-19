@@ -1,17 +1,27 @@
 package com.musicbox.app.ui.settings
 
+import android.os.Build
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -22,7 +32,26 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.musicbox.app.ui.theme.SeedSource
+import com.musicbox.app.ui.theme.ThemeMode
+import com.musicbox.app.ui.theme.ThemeSpec
+
+/** 固定色色板预设（8 个）：覆盖紫/蓝/青/绿/橙/红/粉/灰。 */
+private val PRESET_COLORS: List<Int> = listOf(
+    0xFF7C5CFF.toInt(),
+    0xFF3D7BFF.toInt(),
+    0xFF00B4A0.toInt(),
+    0xFF3BA55D.toInt(),
+    0xFFE58A00.toInt(),
+    0xFFE5484D.toInt(),
+    0xFFD6409F.toInt(),
+    0xFF6B7280.toInt(),
+)
+
+private val WALLPAPER_AVAILABLE = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
 
 @Composable
 fun SettingsScreen(
@@ -30,10 +59,17 @@ fun SettingsScreen(
     showRomaji: Boolean,
     fallbackBaseUrl: String,
     lyricCacheCount: Int,
+    themeSpec: ThemeSpec,
     onToggleTranslation: (Boolean) -> Unit,
     onToggleRomaji: (Boolean) -> Unit,
     onSaveFallbackUrl: (String) -> Unit,
     onClearLyricCache: () -> Unit,
+    onThemeMode: (ThemeMode) -> Unit,
+    onSeedSource: (SeedSource) -> Unit,
+    onFixedSeedArgb: (Int) -> Unit,
+    onSeparatePlayerTheme: (Boolean) -> Unit,
+    onPlayerSeedSource: (SeedSource) -> Unit,
+    onPlayerFixedSeedArgb: (Int) -> Unit,
     logText: () -> String,
     onClearLog: () -> Unit,
     onBack: () -> Unit,
@@ -43,6 +79,99 @@ fun SettingsScreen(
     var showLog by remember { mutableStateOf(false) }
 
     Column(modifier = modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState())) {
+        Text("外观", style = MaterialTheme.typography.titleMedium)
+
+        Text(
+            "主题模式",
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.padding(top = 8.dp),
+        )
+        Row(modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
+            ChoiceChip("跟随系统", themeSpec.mode == ThemeMode.System) { onThemeMode(ThemeMode.System) }
+            ChoiceChip("浅色", themeSpec.mode == ThemeMode.Light) { onThemeMode(ThemeMode.Light) }
+            ChoiceChip("深色", themeSpec.mode == ThemeMode.Dark) { onThemeMode(ThemeMode.Dark) }
+        }
+
+        Text(
+            "取色来源",
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.padding(top = 12.dp),
+        )
+        Row(modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
+            ChoiceChip("封面", themeSpec.seedSource == SeedSource.Cover) { onSeedSource(SeedSource.Cover) }
+            ChoiceChip(
+                label = "壁纸",
+                selected = themeSpec.seedSource == SeedSource.Wallpaper,
+                enabled = WALLPAPER_AVAILABLE,
+            ) { onSeedSource(SeedSource.Wallpaper) }
+            ChoiceChip("固定色", themeSpec.seedSource == SeedSource.Fixed) { onSeedSource(SeedSource.Fixed) }
+        }
+        if (!WALLPAPER_AVAILABLE) {
+            Text(
+                "壁纸取色需要 Android 12 及以上系统，当前设备不可用。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+        }
+
+        Text(
+            "固定色",
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.padding(top = 12.dp),
+        )
+        PaletteRow(
+            selectedArgb = themeSpec.fixedSeedArgb,
+            onSelect = onFixedSeedArgb,
+            modifier = Modifier.padding(top = 4.dp),
+        )
+
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("播放页独立主题", modifier = Modifier.weight(1f))
+            Switch(
+                checked = themeSpec.separatePlayerTheme,
+                onCheckedChange = onSeparatePlayerTheme,
+            )
+        }
+
+        if (themeSpec.separatePlayerTheme) {
+            Text(
+                "播放页取色来源",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 8.dp),
+            )
+            Row(modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
+                ChoiceChip("封面", themeSpec.playerSeedSource == SeedSource.Cover) {
+                    onPlayerSeedSource(SeedSource.Cover)
+                }
+                ChoiceChip(
+                    label = "壁纸",
+                    selected = themeSpec.playerSeedSource == SeedSource.Wallpaper,
+                    enabled = WALLPAPER_AVAILABLE,
+                ) { onPlayerSeedSource(SeedSource.Wallpaper) }
+                ChoiceChip("固定色", themeSpec.playerSeedSource == SeedSource.Fixed) {
+                    onPlayerSeedSource(SeedSource.Fixed)
+                }
+            }
+            Text(
+                "播放页固定色",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 8.dp),
+            )
+            PaletteRow(
+                selectedArgb = themeSpec.playerFixedSeedArgb,
+                onSelect = onPlayerFixedSeedArgb,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+        }
+
+        HorizontalDivider(modifier = Modifier.padding(vertical = 20.dp))
+
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("歌词译文默认显示", modifier = Modifier.weight(1f))
             Switch(checked = showTranslation, onCheckedChange = onToggleTranslation)
@@ -106,5 +235,70 @@ fun SettingsScreen(
                 )
             },
         )
+    }
+}
+
+/** 单个可选项胶囊。选中高亮，禁用置灰。 */
+@Composable
+private fun ChoiceChip(
+    label: String,
+    selected: Boolean,
+    enabled: Boolean = true,
+    onClick: () -> Unit,
+) {
+    val container = when {
+        !enabled -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+        selected -> MaterialTheme.colorScheme.primary
+        else -> MaterialTheme.colorScheme.surfaceVariant
+    }
+    val content = when {
+        !enabled -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+        selected -> MaterialTheme.colorScheme.onPrimary
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    Surface(
+        color = container,
+        shape = RoundedCornerShape(50),
+        modifier = Modifier
+            .padding(end = 8.dp)
+            .clickable(enabled = enabled, onClick = onClick),
+    ) {
+        Text(
+            text = label,
+            color = content,
+            style = MaterialTheme.typography.labelLarge,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+        )
+    }
+}
+
+/** 8 个预设色等分铺满一行，选中项加粗描边。 */
+@Composable
+private fun PaletteRow(
+    selectedArgb: Int,
+    onSelect: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val outlineColor = MaterialTheme.colorScheme.onSurface
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        PRESET_COLORS.forEach { argb ->
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .aspectRatio(1f)
+                    .clip(CircleShape)
+                    .background(Color(argb))
+                    .border(
+                        width = if (argb == selectedArgb) 3.dp else 1.dp,
+                        color = if (argb == selectedArgb) outlineColor
+                        else MaterialTheme.colorScheme.outline,
+                        shape = CircleShape,
+                    )
+                    .clickable { onSelect(argb) },
+            )
+        }
     }
 }
