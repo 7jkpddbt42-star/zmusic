@@ -111,6 +111,7 @@ private fun VideoBackground(path: String, onError: () -> Unit, modifier: Modifie
     DisposableEffect(player) {
         val listener = object : Player.Listener {
             override fun onPlayerError(error: PlaybackException) {
+                // 视频不可用（编解码/文件损坏）时静默回退封面模糊，不打断播放
                 currentOnError()
             }
         }

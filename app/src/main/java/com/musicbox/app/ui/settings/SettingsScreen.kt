@@ -96,7 +96,14 @@ fun SettingsScreen(
     var urlDraft by remember(fallbackBaseUrl) { mutableStateOf(fallbackBaseUrl) }
     var showLog by remember { mutableStateOf(false) }
 
-    Column(modifier = modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState())) {
+    // 整页覆盖在标签内容之上，必须有不透明背景，否则下层页面文字会透出叠字
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.surface)
+            .padding(16.dp)
+            .verticalScroll(rememberScrollState()),
+    ) {
         Text("外观", style = MaterialTheme.typography.titleMedium)
 
         Text(
