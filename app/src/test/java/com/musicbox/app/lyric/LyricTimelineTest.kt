@@ -67,4 +67,44 @@ class LyricTimelineTest {
         assertEquals(0f, wordProgress(1_000, word), 0.0001f)
         assertEquals(1f, wordProgress(1_001, word), 0.0001f)
     }
+
+    @Test
+    fun `currentLineTextAt returns empty before the first line`() {
+        assertEquals("", timeline.currentLineTextAt(0, includeTranslation = true))
+        assertEquals("", timeline.currentLineTextAt(9_999, includeTranslation = false))
+    }
+
+    @Test
+    fun `currentLineTextAt returns the line text when hit`() {
+        assertEquals("L10000", timeline.currentLineTextAt(10_000, includeTranslation = false))
+        assertEquals("L13000", timeline.currentLineTextAt(13_500, includeTranslation = false))
+    }
+
+    @Test
+    fun `currentLineTextAt joins translation when present`() {
+        val t = LyricTimeline(
+            listOf(LyricLine(startMs = 1_000, durationMs = 1_000, text = "原词", translation = "译文")),
+        )
+        assertEquals("原词 · 译文", t.currentLineTextAt(1_500, includeTranslation = true))
+        // 关掉译文开关时只返回原文
+        assertEquals("原词", t.currentLineTextAt(1_500, includeTranslation = false))
+    }
+
+    @Test
+    fun `currentLineTextAt ignores blank translation`() {
+        val t = LyricTimeline(
+            listOf(
+                LyricLine(startMs = 1_000, durationMs = 1_000, text = "原词", translation = null),
+                LyricLine(startMs = 3_000, durationMs = 1_000, text = "第二", translation = "  "),
+            ),
+        )
+        assertEquals("原词", t.currentLineTextAt(1_500, includeTranslation = true))
+        assertEquals("第二", t.currentLineTextAt(3_500, includeTranslation = true))
+    }
+
+    @Test
+    fun `currentLineTextAt keeps previous line during a gap`() {
+        // 14_500 落在第 1 行结束(14_000)与第 2 行开始(15_000)之间的空隙 → 仍返回第 1 行
+        assertEquals("L13000", timeline.currentLineTextAt(14_500, includeTranslation = false))
+    }
 }

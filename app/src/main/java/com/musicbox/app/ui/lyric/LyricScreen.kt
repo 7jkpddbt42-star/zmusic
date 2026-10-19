@@ -30,6 +30,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -192,6 +194,8 @@ private fun LyricLineRow(
     val fillColor = if (isActive) MaterialTheme.colorScheme.primary else dim
 
     val alpha by animateFloatAsState(targetValue = if (isActive) 1f else 0.85f, label = "lineAlpha")
+    // 当前行整体轻微放大；行级过渡允许用 animateFloatAsState（非逐帧）
+    val scale by animateFloatAsState(targetValue = if (isActive) 1.02f else 1f, label = "lineScale")
     val style: TextStyle = if (isActive) {
         MaterialTheme.typography.titleLarge.copy(fontSize = 22.sp, lineHeight = 32.sp)
     } else {
@@ -201,6 +205,10 @@ private fun LyricLineRow(
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
             .clickable(onClick = onClick)
             .padding(vertical = 10.dp),
     ) {
@@ -214,6 +222,7 @@ private fun LyricLineRow(
                         fillColor = fillColor,
                         style = style,
                         alpha = alpha,
+                        animate = isActive,
                     )
                 }
             }
@@ -248,6 +257,12 @@ private fun LyricLineRow(
 /**
  * 一个词的逐字填充：暗底 + 亮面（亮面按进度裁剪）。
  * progress 每帧由调用方传入的 positionMs 重算（见 wordProgress）。
+ *
+ * 当前行额外做逐字"上浮 + 放大"——同样由 progress 每帧驱动，
+ * 严禁使用 animateFloatAsState（会丢毫秒精度）。变换加在包住
+ * 「暗底 + 亮面」两层文字的外层 Box 上，保证两层同步位移、不错位。
+ * 非当前行（[animate] == false）不套变换：历史行 progress 恒为 1，
+ * 否则已唱过的行会永久上浮。
  */
 @Composable
 private fun KaraokeWord(
@@ -257,9 +272,24 @@ private fun KaraokeWord(
     fillColor: Color,
     style: TextStyle,
     alpha: Float,
+    animate: Boolean,
 ) {
     val progress = wordProgress(positionMs, word)
-    Box {
+    // 上浮幅度约 0.25em：style.fontSize.value 为 sp 数值
+    val d = LocalDensity.current
+    val risePx = style.fontSize.value * d.density * d.fontScale * 0.25f
+    Box(
+        modifier = if (animate) {
+            Modifier.graphicsLayer {
+                translationY = -risePx * progress
+                val s = 1f + 0.06f * progress
+                scaleX = s
+                scaleY = s
+            }
+        } else {
+            Modifier
+        },
+    ) {
         Text(
             text = word.text,
             style = style,

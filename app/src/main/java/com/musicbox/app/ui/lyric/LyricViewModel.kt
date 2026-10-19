@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.musicbox.app.data.LyricDiskCache
 import com.musicbox.app.lyric.LyricParser
 import com.musicbox.app.lyric.LyricTimeline
+import com.musicbox.app.lyric.currentLineTextAt
 import com.musicbox.app.lyric.sharedLyricCache
 import com.musicbox.app.source.MusicProvider
 import kotlinx.coroutines.Dispatchers
@@ -48,8 +49,15 @@ class LyricViewModel(
     private val _showRomaji = MutableStateFlow(false)
     val showRomaji: StateFlow<Boolean> = _showRomaji.asStateFlow()
 
+    /** 迷你播放条展示的"当前行文本"，仅在当前行变化时才更新（避免高频写入触发重组）。 */
+    private val _currentLineText = MutableStateFlow("")
+    val currentLineText: StateFlow<String> = _currentLineText.asStateFlow()
+
     private var loadedSongId: Long? = null
     private var job: Job? = null
+
+    /** 最近一次的播放位置，用于切换译文开关时立即重算当前行文本。 */
+    private var lastPositionMs: Long = 0L
 
     init {
         connectivity?.let { flow ->
@@ -67,8 +75,23 @@ class LyricViewModel(
     fun toggleTranslation() { _showTranslation.value = !_showTranslation.value }
     fun toggleRomaji() { _showRomaji.value = !_showRomaji.value }
 
-    fun setShowTranslation(value: Boolean) { _showTranslation.value = value }
+    fun setShowTranslation(value: Boolean) {
+        _showTranslation.value = value
+        // 切换译文开关后立即用最近一次位置重算，迷你条不必等到下一帧位置回调
+        updatePosition(lastPositionMs)
+    }
     fun setShowRomaji(value: Boolean) { _showRomaji.value = value }
+
+    /**
+     * 由外部（已有 250ms 播放位置）驱动，刷新迷你条当前行文本。
+     * 仅 [LyricUiState.Ready] 才取时间轴；文本未变化时不写入，避免无谓重组。
+     */
+    fun updatePosition(positionMs: Long) {
+        lastPositionMs = positionMs
+        val timeline = (_state.value as? LyricUiState.Ready)?.timeline
+        val text = timeline?.currentLineTextAt(positionMs, _showTranslation.value).orEmpty()
+        if (text != _currentLineText.value) _currentLineText.value = text
+    }
 
     /** 歌词页"重试"按钮：忽略缓存重新拉。 */
     fun retry() {
@@ -80,6 +103,7 @@ class LyricViewModel(
         if (songId == null) {
             job?.cancel()
             loadedSongId = null
+            _currentLineText.value = ""
             _state.value = LyricUiState.Idle
             return
         }
@@ -90,6 +114,8 @@ class LyricViewModel(
     private fun startLoad(songId: Long, useMemoryCache: Boolean) {
         loadedSongId = songId
         job?.cancel()
+        // 进入新歌的加载（含 Loading）：清空上一首遗留的当前行文本
+        _currentLineText.value = ""
 
         if (useMemoryCache) {
             memoryCache.get(songId)?.let {

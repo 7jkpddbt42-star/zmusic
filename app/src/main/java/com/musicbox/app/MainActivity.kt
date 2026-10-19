@@ -141,6 +141,7 @@ private fun MusicBoxApp(container: AppContainer, spec: ThemeSpec, coverSeed: Col
     val mode by playerVm.mode.collectAsStateWithLifecycle()
     val message by playerVm.message.collectAsStateWithLifecycle()
     val lyricState by lyricVm.state.collectAsStateWithLifecycle()
+    val currentLineText by lyricVm.currentLineText.collectAsStateWithLifecycle()
     val showTranslationPref by container.settings.showTranslation.collectAsStateWithLifecycle()
     val showRomajiPref by container.settings.showRomaji.collectAsStateWithLifecycle()
     val fallbackUrl by container.settings.fallbackBaseUrl.collectAsStateWithLifecycle()
@@ -185,6 +186,10 @@ private fun MusicBoxApp(container: AppContainer, spec: ThemeSpec, coverSeed: Col
     }
     LaunchedEffect(playState.currentSongId) {
         lyricVm.load(playState.currentSongId)
+    }
+    // 用已有的 250ms 播放位置驱动迷你条当前行文本（不额外引入逐帧时钟）
+    LaunchedEffect(playState.positionMs, lyricState, showTranslationPref) {
+        lyricVm.updatePosition(playState.positionMs)
     }
 
     // 一次性提示
@@ -243,6 +248,7 @@ private fun MusicBoxApp(container: AppContainer, spec: ThemeSpec, coverSeed: Col
                             showPlayer = true
                         },
                         onTogglePlay = playerVm::togglePlay,
+                        lyricLine = currentLineText,
                     )
                     BottomTabs(current = tab, onSelect = { tab = it })
                 }

@@ -1,5 +1,9 @@
 package com.musicbox.app.ui.player
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -28,6 +32,7 @@ internal fun NowPlayingBar(
     onExpand: () -> Unit,
     onTogglePlay: () -> Unit,
     modifier: Modifier = Modifier,
+    lyricLine: String = "",
 ) {
     if (!state.hasCurrent) return
 
@@ -88,6 +93,23 @@ internal fun NowPlayingBar(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
+                    // 当前歌词行：始终占据一行高度，随行变化淡入淡出，避免迷你条抖动
+                    AnimatedContent(
+                        targetState = lyricLine,
+                        transitionSpec = { fadeIn() togetherWith fadeOut() },
+                        contentAlignment = Alignment.CenterStart,
+                        label = "miniLyric",
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { text ->
+                        Text(
+                            // 空行渲染单个空格占位，视觉上为空白且高度稳定
+                            text = text.ifEmpty { " " },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
                 TextButton(onClick = onTogglePlay) {
                     Text(if (state.isPlaying) "⏸" else "▶", style = MaterialTheme.typography.titleMedium)

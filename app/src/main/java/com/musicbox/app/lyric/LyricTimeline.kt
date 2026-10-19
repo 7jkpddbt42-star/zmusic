@@ -75,5 +75,22 @@ fun wordProgress(positionMs: Long, word: LyricWord): Float {
     return ((positionMs - word.startMs).toFloat() / span).coerceIn(0f, 1f)
 }
 
+/**
+ * 迷你播放条应显示的"当前行文本"（纯函数，便于单测）。
+ * - 第一行开始之前（[indexAt] 返回 -1）→ 空串；
+ * - [includeTranslation] 为 true 且译文非空白 → "原文 · 译文"；
+ * - 否则只返回原文。
+ * 行与行之间的空隙仍返回最近已开始的那一行（与卡拉OK高亮保持一致）。
+ */
+fun LyricTimeline.currentLineTextAt(positionMs: Long, includeTranslation: Boolean): String {
+    val line = lineAt(positionMs) ?: return ""
+    val translation = line.translation
+    return if (includeTranslation && !translation.isNullOrBlank()) {
+        "${line.text} · $translation"
+    } else {
+        line.text
+    }
+}
+
 /** 未使用，仅供 LyricData 的可见性提醒：解析器入口吃的是 LyricData。 */
 internal typealias RawLyric = LyricData
