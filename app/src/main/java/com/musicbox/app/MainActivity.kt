@@ -8,6 +8,16 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -149,6 +159,12 @@ private fun MusicBoxApp(container: AppContainer, spec: ThemeSpec, coverSeed: Col
     var showQueue by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     var showLogin by remember { mutableStateOf(false) }
+    // 播放页沉浸模式：长按播放键切换；关闭播放页时自动退出
+    var immersive by remember { mutableStateOf(false) }
+
+    LaunchedEffect(showPlayer) {
+        if (!showPlayer) immersive = false
+    }
 
     // 断网 / 恢复：明确提示（设计文档 §9）
     var wasOnline by remember { mutableStateOf(true) }
@@ -213,16 +229,23 @@ private fun MusicBoxApp(container: AppContainer, spec: ThemeSpec, coverSeed: Col
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         bottomBar = {
-            Column {
-                NowPlayingBar(
-                    state = playState,
-                    onExpand = {
-                        showLyric = false
-                        showPlayer = true
-                    },
-                    onTogglePlay = playerVm::togglePlay,
-                )
-                BottomTabs(current = tab, onSelect = { tab = it })
+            // 沉浸模式隐藏底部栏位（迷你播放条 + 四标签），用纵向展开/收缩 + 淡入淡出过渡
+            AnimatedVisibility(
+                visible = !immersive,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut(),
+            ) {
+                Column {
+                    NowPlayingBar(
+                        state = playState,
+                        onExpand = {
+                            showLyric = false
+                            showPlayer = true
+                        },
+                        onTogglePlay = playerVm::togglePlay,
+                    )
+                    BottomTabs(current = tab, onSelect = { tab = it })
+                }
             }
         },
     ) { innerPadding ->
@@ -281,45 +304,67 @@ private fun MusicBoxApp(container: AppContainer, spec: ThemeSpec, coverSeed: Col
     }
 
     val playerLayer: @Composable () -> Unit = {
-        if (showPlayer && showLyric) {
-            LyricScreen(
-                state = lyricState,
-                source = connection,
-                title = playState.title,
-                artist = playState.artist,
-                showTranslation = showTranslationPref,
-                showRomaji = showRomajiPref,
-                onToggleTranslation = {
-                    container.settings.setShowTranslation(!showTranslationPref)
-                },
-                onToggleRomaji = {
-                    container.settings.setShowRomaji(!showRomajiPref)
-                },
-                onSeek = playerVm::seekTo,
-                onCollapse = { showLyric = false },
-            )
-        } else if (showPlayer) {
-            PlayerScreen(
-                state = playState,
-                modeLabel = mode.label,
-                isFavorite = playState.currentSongId?.let(libraryVm::isFavorite) == true,
-                onToggleFavorite = {
-                    val id = playState.currentSongId ?: return@PlayerScreen
-                    val song = searchState.results.firstOrNull { it.id == id }
-                        ?: history.firstOrNull { it.song.id == id }?.song
-                        ?: favorites.firstOrNull { it.song.id == id }?.song
-                    if (song != null) libraryVm.toggleFavorite(song)
-                },
-                onCollapse = { showPlayer = false },
-                onTogglePlay = playerVm::togglePlay,
-                onNext = playerVm::next,
-                onPrevious = playerVm::previous,
-                onSeek = playerVm::seekTo,
-                onCycleMode = playerVm::cyclePlayMode,
-                onOpenQueue = { showQueue = true },
-                onOpenLyric = { showLyric = true },
-                onArtworkLoaded = { container.artworkTheme.update(it) },
-            )
+        // 播放页整层：从底部滑入 / 滑出 + 淡入淡出，替换原本的瞬时切换
+        AnimatedVisibility(
+            visible = showPlayer,
+            enter = slideInVertically { it } + fadeIn(),
+            exit = slideOutVertically { it } + fadeOut(),
+        ) {
+            Box {
+                // 播放页：从底部滑入；进入歌词页时滑出（与歌词页互斥）
+                AnimatedVisibility(
+                    visible = !showLyric,
+                    enter = slideInVertically { it },
+                    exit = slideOutVertically { it },
+                ) {
+                    PlayerScreen(
+                        state = playState,
+                        modeLabel = mode.label,
+                        isFavorite = playState.currentSongId?.let(libraryVm::isFavorite) == true,
+                        immersive = immersive,
+                        onToggleImmersive = { immersive = !immersive },
+                        onToggleFavorite = {
+                            val id = playState.currentSongId ?: return@PlayerScreen
+                            val song = searchState.results.firstOrNull { it.id == id }
+                                ?: history.firstOrNull { it.song.id == id }?.song
+                                ?: favorites.firstOrNull { it.song.id == id }?.song
+                            if (song != null) libraryVm.toggleFavorite(song)
+                        },
+                        onCollapse = { showPlayer = false },
+                        onTogglePlay = playerVm::togglePlay,
+                        onNext = playerVm::next,
+                        onPrevious = playerVm::previous,
+                        onSeek = playerVm::seekTo,
+                        onCycleMode = playerVm::cyclePlayMode,
+                        onOpenQueue = { showQueue = true },
+                        onOpenLyric = { showLyric = true },
+                        onArtworkLoaded = { container.artworkTheme.update(it) },
+                    )
+                }
+                // 歌词页：从右侧滑入 / 滑出，与播放页互斥
+                AnimatedVisibility(
+                    visible = showLyric,
+                    enter = slideInHorizontally { it },
+                    exit = slideOutHorizontally { it },
+                ) {
+                    LyricScreen(
+                        state = lyricState,
+                        source = connection,
+                        title = playState.title,
+                        artist = playState.artist,
+                        showTranslation = showTranslationPref,
+                        showRomaji = showRomajiPref,
+                        onToggleTranslation = {
+                            container.settings.setShowTranslation(!showTranslationPref)
+                        },
+                        onToggleRomaji = {
+                            container.settings.setShowRomaji(!showRomajiPref)
+                        },
+                        onSeek = playerVm::seekTo,
+                        onCollapse = { showLyric = false },
+                    )
+                }
+            }
         }
     }
 
