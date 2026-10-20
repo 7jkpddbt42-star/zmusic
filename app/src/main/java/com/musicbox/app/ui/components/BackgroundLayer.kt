@@ -3,7 +3,7 @@ package com.musicbox.app.ui.components
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
-import android.view.SurfaceView
+import android.view.TextureView
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -42,7 +42,7 @@ fun backgroundBitmapInSampleSize(width: Int, height: Int, maxEdge: Int = BACKGRO
  * 播放页最底层背景层。
  *
  * 优先级（与设计一致）：视频（可用时）> 自定义图片 > 封面模糊。
- * - 视频：ExoPlayer 播放本机文件，静音循环；绑定 SurfaceView 渲染。解码/绑定失败 → [onError]。
+ * - 视频：ExoPlayer 播放本机文件，静音循环；绑定 TextureView 渲染。解码/绑定失败 → [onError]。
  * - 图片：BitmapFactory 采样解码后走 [BlurScrimBitmap] 毛玻璃路径；解码失败 → 回退封面模糊。
  * - 封面：复用 [BlurredBackdrop]。
  *
@@ -95,10 +95,13 @@ private fun decodeLocalBitmap(path: String?): Bitmap? {
 }
 
 /**
- * 视频背景：ExoPlayer 循环播放本机文件（静音），绑定 [SurfaceView] 渲染。
+ * 视频背景：ExoPlayer 循环播放本机文件（静音），绑定 [TextureView] 渲染。
  *
  * 未使用 `androidx.media3.ui.PlayerView`（项目未依赖 `media3-ui`），
- * 而是直接用 [Player.setVideoSurfaceView] 绑定自建 SurfaceView。
+ * 而是直接用 [Player.setVideoTextureView] 绑定自建 TextureView。
+ * 必须用 TextureView 而非 SurfaceView：SurfaceView 的内容在自己的独立合成层上呈现，
+ * 不会被 GraphicsLayer.record（液态玻璃的背景捕获）捕获，玻璃折射会采不到视频画面；
+ * TextureView 走普通 View 渲染管线，内容可被离屏记录。
  * 任何异常 → [onError]，由上层回退到封面模糊。
  */
 @Composable
@@ -139,8 +142,8 @@ private fun VideoBackground(path: String, onError: () -> Unit, modifier: Modifie
 
     AndroidView(
         factory = { ctx ->
-            SurfaceView(ctx).also { surfaceView ->
-                runCatching { player.setVideoSurfaceView(surfaceView) }
+            TextureView(ctx).also { textureView ->
+                runCatching { player.setVideoTextureView(textureView) }
                     .onFailure { currentOnError() }
             }
         },
