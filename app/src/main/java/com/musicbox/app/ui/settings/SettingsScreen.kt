@@ -7,10 +7,13 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -18,7 +21,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -35,6 +37,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.musicbox.app.ui.components.liquidglass.GlassBackdrop
+import com.musicbox.app.ui.components.liquidglass.glassBackdropSource
+import com.musicbox.app.ui.components.liquidglass.liquidGlass
+import com.musicbox.app.ui.components.liquidglass.rememberGlassBackdrop
 import com.musicbox.app.ui.theme.SeedSource
 import com.musicbox.app.ui.theme.ThemeMode
 import com.musicbox.app.ui.theme.ThemeSpec
@@ -96,219 +102,244 @@ fun SettingsScreen(
     var urlDraft by remember(fallbackBaseUrl) { mutableStateOf(fallbackBaseUrl) }
     var showLog by remember { mutableStateOf(false) }
 
-    // 整页覆盖在标签内容之上，必须有不透明背景，否则下层页面文字会透出叠字
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.surface)
-            .padding(16.dp)
-            .verticalScroll(rememberScrollState()),
-    ) {
-        Text("外观", style = MaterialTheme.typography.titleMedium)
+    // 页面自有玻璃背景源：不透明 surface 底遮住下层页面（防叠字），同时供分组卡片采样
+    val backdrop = rememberGlassBackdrop()
 
-        Text(
-            "主题模式",
-            style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.padding(top = 8.dp),
+    Box(modifier = modifier.fillMaxSize()) {
+        // 背景源层：只放不透明底色（玻璃卡片不放进这里，避免自采样鬼影）
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .glassBackdropSource(backdrop)
+                .background(MaterialTheme.colorScheme.surface),
         )
-        Row(modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
-            ChoiceChip("跟随系统", themeSpec.mode == ThemeMode.System) { onThemeMode(ThemeMode.System) }
-            ChoiceChip("浅色", themeSpec.mode == ThemeMode.Light) { onThemeMode(ThemeMode.Light) }
-            ChoiceChip("深色", themeSpec.mode == ThemeMode.Dark) { onThemeMode(ThemeMode.Dark) }
-        }
-
-        Text(
-            "取色来源",
-            style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.padding(top = 12.dp),
-        )
-        Row(modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
-            ChoiceChip("封面", themeSpec.seedSource == SeedSource.Cover) { onSeedSource(SeedSource.Cover) }
-            ChoiceChip(
-                label = "壁纸",
-                selected = themeSpec.seedSource == SeedSource.Wallpaper,
-                enabled = WALLPAPER_AVAILABLE,
-            ) { onSeedSource(SeedSource.Wallpaper) }
-            ChoiceChip("固定色", themeSpec.seedSource == SeedSource.Fixed) { onSeedSource(SeedSource.Fixed) }
-        }
-        if (!WALLPAPER_AVAILABLE) {
-            Text(
-                "壁纸取色需要 Android 12 及以上系统，当前设备不可用。",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 4.dp),
-            )
-        }
-
-        Text(
-            "固定色",
-            style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.padding(top = 12.dp),
-        )
-        PaletteRow(
-            selectedArgb = themeSpec.fixedSeedArgb,
-            onSelect = onFixedSeedArgb,
-            modifier = Modifier.padding(top = 4.dp),
-        )
-
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
+        // 内容层：每个分组包进一块玻璃卡片（采样纯色底，视觉是干净的毛玻璃块）
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp)
+                .verticalScroll(rememberScrollState()),
         ) {
-            Text("播放页独立主题", modifier = Modifier.weight(1f))
-            Switch(
-                checked = themeSpec.separatePlayerTheme,
-                onCheckedChange = onSeparatePlayerTheme,
-            )
-        }
+            GlassSection(backdrop = backdrop) {
+                Text("外观", style = MaterialTheme.typography.titleMedium)
 
-        if (themeSpec.separatePlayerTheme) {
-            Text(
-                "播放页取色来源",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 8.dp),
-            )
-            Row(modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
-                ChoiceChip("封面", themeSpec.playerSeedSource == SeedSource.Cover) {
-                    onPlayerSeedSource(SeedSource.Cover)
+                Text(
+                    "主题模式",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
+                Row(modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
+                    ChoiceChip("跟随系统", themeSpec.mode == ThemeMode.System) { onThemeMode(ThemeMode.System) }
+                    ChoiceChip("浅色", themeSpec.mode == ThemeMode.Light) { onThemeMode(ThemeMode.Light) }
+                    ChoiceChip("深色", themeSpec.mode == ThemeMode.Dark) { onThemeMode(ThemeMode.Dark) }
                 }
-                ChoiceChip(
-                    label = "壁纸",
-                    selected = themeSpec.playerSeedSource == SeedSource.Wallpaper,
-                    enabled = WALLPAPER_AVAILABLE,
-                ) { onPlayerSeedSource(SeedSource.Wallpaper) }
-                ChoiceChip("固定色", themeSpec.playerSeedSource == SeedSource.Fixed) {
-                    onPlayerSeedSource(SeedSource.Fixed)
+
+                Text(
+                    "取色来源",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(top = 12.dp),
+                )
+                Row(modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
+                    ChoiceChip("封面", themeSpec.seedSource == SeedSource.Cover) { onSeedSource(SeedSource.Cover) }
+                    ChoiceChip(
+                        label = "壁纸",
+                        selected = themeSpec.seedSource == SeedSource.Wallpaper,
+                        enabled = WALLPAPER_AVAILABLE,
+                    ) { onSeedSource(SeedSource.Wallpaper) }
+                    ChoiceChip("固定色", themeSpec.seedSource == SeedSource.Fixed) { onSeedSource(SeedSource.Fixed) }
+                }
+                if (!WALLPAPER_AVAILABLE) {
+                    Text(
+                        "壁纸取色需要 Android 12 及以上系统，当前设备不可用。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                }
+
+                Text(
+                    "固定色",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(top = 12.dp),
+                )
+                PaletteRow(
+                    selectedArgb = themeSpec.fixedSeedArgb,
+                    onSelect = onFixedSeedArgb,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("播放页独立主题", modifier = Modifier.weight(1f))
+                    Switch(
+                        checked = themeSpec.separatePlayerTheme,
+                        onCheckedChange = onSeparatePlayerTheme,
+                    )
+                }
+
+                if (themeSpec.separatePlayerTheme) {
+                    Text(
+                        "播放页取色来源",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                    Row(modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
+                        ChoiceChip("封面", themeSpec.playerSeedSource == SeedSource.Cover) {
+                            onPlayerSeedSource(SeedSource.Cover)
+                        }
+                        ChoiceChip(
+                            label = "壁纸",
+                            selected = themeSpec.playerSeedSource == SeedSource.Wallpaper,
+                            enabled = WALLPAPER_AVAILABLE,
+                        ) { onPlayerSeedSource(SeedSource.Wallpaper) }
+                        ChoiceChip("固定色", themeSpec.playerSeedSource == SeedSource.Fixed) {
+                            onPlayerSeedSource(SeedSource.Fixed)
+                        }
+                    }
+                    Text(
+                        "播放页固定色",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                    PaletteRow(
+                        selectedArgb = themeSpec.playerFixedSeedArgb,
+                        onSelect = onPlayerFixedSeedArgb,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
                 }
             }
-            Text(
-                "播放页固定色",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 8.dp),
-            )
-            PaletteRow(
-                selectedArgb = themeSpec.playerFixedSeedArgb,
-                onSelect = onPlayerFixedSeedArgb,
-                modifier = Modifier.padding(top = 4.dp),
-            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            GlassSection(backdrop = backdrop) {
+                Text("背景", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "仅支持本机素材（相册中的图片或视频），不提供官方素材库 / 在线 MV；选中的素材会复制到应用内保存。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+                Text(
+                    backgroundLabel,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Button(onClick = onPickBackgroundImage) { Text("选择背景图片") }
+                    Button(onClick = onPickBackgroundVideo) { Text("选择背景视频") }
+                }
+                TextButton(onClick = onResetBackground, modifier = Modifier.padding(top = 4.dp)) {
+                    Text("恢复默认")
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            GlassSection(backdrop = backdrop) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("歌词译文默认显示", modifier = Modifier.weight(1f))
+                    Switch(checked = showTranslation, onCheckedChange = onToggleTranslation)
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("歌词罗马音默认显示", modifier = Modifier.weight(1f))
+                    Switch(checked = showRomaji, onCheckedChange = onToggleRomaji)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            GlassSection(backdrop = backdrop) {
+                Text("桌面歌词", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "在系统悬浮窗中显示当前歌词，可拖动到任意位置。首次开启需要授予「显示在其他应用上层」权限。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("启用桌面歌词", modifier = Modifier.weight(1f))
+                    Switch(checked = desktopLyricEnabled, onCheckedChange = onDesktopLyricEnabled)
+                }
+                Text(
+                    "字号",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(top = 12.dp),
+                )
+                Row(modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
+                    ChoiceChip("小", desktopLyricFontSp == 16) { onDesktopLyricFontSp(16) }
+                    ChoiceChip("中", desktopLyricFontSp == 20) { onDesktopLyricFontSp(20) }
+                    ChoiceChip("大", desktopLyricFontSp == 24) { onDesktopLyricFontSp(24) }
+                }
+                Text(
+                    "颜色",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(top = 12.dp),
+                )
+                PaletteRow(
+                    selectedArgb = desktopLyricColorArgb,
+                    onSelect = onDesktopLyricColorArgb,
+                    modifier = Modifier.padding(top = 4.dp),
+                    colors = DESKTOP_LYRIC_COLORS,
+                )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            GlassSection(backdrop = backdrop) {
+                Text("备用音源地址", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "默认留空。仅在端上签名路径临时失效时作为应急兜底，不参与正常流程。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp, bottom = 8.dp),
+                )
+                OutlinedTextField(
+                    value = urlDraft,
+                    onValueChange = { urlDraft = it },
+                    singleLine = true,
+                    label = { Text("例如 https://example.com") },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Button(
+                    onClick = { onSaveFallbackUrl(urlDraft) },
+                    modifier = Modifier.padding(top = 8.dp),
+                ) { Text("保存地址") }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            GlassSection(backdrop = backdrop) {
+                Text("歌词缓存：$lyricCacheCount 首")
+                Button(onClick = onClearLyricCache, modifier = Modifier.padding(top = 8.dp)) { Text("清空歌词缓存") }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            GlassSection(backdrop = backdrop) {
+                Text("错误日志", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "签名 / 解析异常等本地技术日志，仅用于排查，不影响使用。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Row {
+                    TextButton(onClick = { showLog = true }) { Text("查看") }
+                    TextButton(onClick = onClearLog) { Text("清空") }
+                }
+            }
+
+            TextButton(onClick = onBack, modifier = Modifier.padding(top = 24.dp)) { Text("返回") }
         }
-
-        HorizontalDivider(modifier = Modifier.padding(vertical = 20.dp))
-
-        Text("背景", style = MaterialTheme.typography.titleMedium)
-        Text(
-            "仅支持本机素材（相册中的图片或视频），不提供官方素材库 / 在线 MV；选中的素材会复制到应用内保存。",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = 4.dp),
-        )
-        Text(
-            backgroundLabel,
-            style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.padding(top = 8.dp),
-        )
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Button(onClick = onPickBackgroundImage) { Text("选择背景图片") }
-            Button(onClick = onPickBackgroundVideo) { Text("选择背景视频") }
-        }
-        TextButton(onClick = onResetBackground, modifier = Modifier.padding(top = 4.dp)) {
-            Text("恢复默认")
-        }
-
-        HorizontalDivider(modifier = Modifier.padding(vertical = 20.dp))
-
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("歌词译文默认显示", modifier = Modifier.weight(1f))
-            Switch(checked = showTranslation, onCheckedChange = onToggleTranslation)
-        }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("歌词罗马音默认显示", modifier = Modifier.weight(1f))
-            Switch(checked = showRomaji, onCheckedChange = onToggleRomaji)
-        }
-
-        HorizontalDivider(modifier = Modifier.padding(vertical = 20.dp))
-
-        Text("桌面歌词", style = MaterialTheme.typography.titleMedium)
-        Text(
-            "在系统悬浮窗中显示当前歌词，可拖动到任意位置。首次开启需要授予「显示在其他应用上层」权限。",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = 4.dp),
-        )
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text("启用桌面歌词", modifier = Modifier.weight(1f))
-            Switch(checked = desktopLyricEnabled, onCheckedChange = onDesktopLyricEnabled)
-        }
-        Text(
-            "字号",
-            style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.padding(top = 12.dp),
-        )
-        Row(modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
-            ChoiceChip("小", desktopLyricFontSp == 16) { onDesktopLyricFontSp(16) }
-            ChoiceChip("中", desktopLyricFontSp == 20) { onDesktopLyricFontSp(20) }
-            ChoiceChip("大", desktopLyricFontSp == 24) { onDesktopLyricFontSp(24) }
-        }
-        Text(
-            "颜色",
-            style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.padding(top = 12.dp),
-        )
-        PaletteRow(
-            selectedArgb = desktopLyricColorArgb,
-            onSelect = onDesktopLyricColorArgb,
-            modifier = Modifier.padding(top = 4.dp),
-            colors = DESKTOP_LYRIC_COLORS,
-        )
-
-        HorizontalDivider(modifier = Modifier.padding(vertical = 20.dp))
-
-        Text("备用音源地址", style = MaterialTheme.typography.titleMedium)
-        Text(
-            "默认留空。仅在端上签名路径临时失效时作为应急兜底，不参与正常流程。",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = 4.dp, bottom = 8.dp),
-        )
-        OutlinedTextField(
-            value = urlDraft,
-            onValueChange = { urlDraft = it },
-            singleLine = true,
-            label = { Text("例如 https://example.com") },
-            modifier = Modifier.fillMaxWidth(),
-        )
-        Button(
-            onClick = { onSaveFallbackUrl(urlDraft) },
-            modifier = Modifier.padding(top = 8.dp),
-        ) { Text("保存地址") }
-
-        HorizontalDivider(modifier = Modifier.padding(vertical = 20.dp))
-
-        Text("歌词缓存：$lyricCacheCount 首")
-        Button(onClick = onClearLyricCache, modifier = Modifier.padding(top = 8.dp)) { Text("清空歌词缓存") }
-
-        HorizontalDivider(modifier = Modifier.padding(vertical = 20.dp))
-
-        Text("错误日志", style = MaterialTheme.typography.titleMedium)
-        Text(
-            "签名 / 解析异常等本地技术日志，仅用于排查，不影响使用。",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Row {
-            TextButton(onClick = { showLog = true }) { Text("查看") }
-            TextButton(onClick = onClearLog) { Text("清空") }
-        }
-
-        TextButton(onClick = onBack, modifier = Modifier.padding(top = 24.dp)) { Text("返回") }
     }
 
     if (showLog) {
@@ -324,6 +355,30 @@ fun SettingsScreen(
             },
         )
     }
+}
+
+/**
+ * 设置页分组玻璃卡片：采样页面不透明底色的毛玻璃块（页面内容不穿卡片，视觉干净）。
+ * 内边距 16dp，与旧分组内容的留白习惯一致。
+ */
+@Composable
+private fun GlassSection(
+    backdrop: GlassBackdrop,
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .liquidGlass(
+                backdrop = backdrop,
+                shape = RoundedCornerShape(16.dp),
+                blurRadius = 16.dp,
+                tint = Color.White.copy(alpha = 0.12f),
+            )
+            .padding(16.dp),
+        content = content,
+    )
 }
 
 /** 单个可选项胶囊。选中高亮，禁用置灰。 */

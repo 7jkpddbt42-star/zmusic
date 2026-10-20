@@ -26,7 +26,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Scaffold
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
@@ -39,9 +39,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -54,6 +57,9 @@ import com.musicbox.app.ui.BottomTabs
 import com.musicbox.app.ui.LocalPageSeed
 import com.musicbox.app.ui.MainTab
 import com.musicbox.app.ui.MusicBoxTheme
+import com.musicbox.app.ui.components.liquidglass.LocalGlassBackdrop
+import com.musicbox.app.ui.components.liquidglass.glassBackdropSource
+import com.musicbox.app.ui.components.liquidglass.rememberGlassBackdrop
 import com.musicbox.app.ui.library.FavoriteScreen
 import com.musicbox.app.ui.library.HistoryScreen
 import com.musicbox.app.ui.library.LibraryViewModel
@@ -301,12 +307,70 @@ private fun MusicBoxApp(container: AppContainer, spec: ThemeSpec, coverSeed: Col
         libraryVm.recordPlayed(song)
     }
 
-    Scaffold(
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-        bottomBar = {
-            // 沉浸模式隐藏底部栏位（迷你播放条 + 四标签），用纵向展开/收缩 + 淡入淡出过渡
+    // 壳层玻璃背景：标签页内容整体作为背景源，底部浮层玻璃实时采样它
+    val shellBackdrop = rememberGlassBackdrop()
+    // 底部浮层（迷你条 + 四标签）实测高度：内容区据此向下留出空隙
+    var overlayHeightPx by remember { mutableStateOf(0) }
+    val overlayBottomPadding = with(LocalDensity.current) { overlayHeightPx.toDp() }
+    // 沉浸模式下浮层整体移除，清掉残留测量值，让内容重新占满全屏
+    LaunchedEffect(immersive) { if (immersive) overlayHeightPx = 0 }
+
+    CompositionLocalProvider(LocalGlassBackdrop provides shellBackdrop) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            // 内容区：整体是玻璃背景源；内部再留出状态栏与底部浮层高度的空隙
+            Box(modifier = Modifier.fillMaxSize().glassBackdropSource(shellBackdrop)) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .statusBarsPadding()
+                        .padding(bottom = overlayBottomPadding),
+                ) {
+                    when (tab) {
+                        MainTab.SEARCH -> SearchScreen(
+                            state = searchState,
+                            onQueryChange = searchVm::onQueryChange,
+                            onSearch = searchVm::search,
+                            nowPlayingSongId = playState.currentSongId,
+                            onSongClick = { index ->
+                                playerVm.play(searchState.results, index)
+                                searchState.results.getOrNull(index)?.let { libraryVm.recordPlayed(it) }
+                            },
+                            isFavorite = libraryVm::isFavorite,
+                            onToggleFavorite = { libraryVm.toggleFavorite(it) },
+                            modifier = Modifier,
+                        )
+                        MainTab.FAVORITE -> FavoriteScreen(
+                            songs = favorites.map { it.song },
+                            nowPlayingSongId = playState.currentSongId,
+                            onSongClick = { playSong(it) },
+                            modifier = Modifier,
+                        )
+                        MainTab.HISTORY -> HistoryScreen(
+                            songs = history.map { it.song },
+                            nowPlayingSongId = playState.currentSongId,
+                            onSongClick = { playSong(it) },
+                            onClear = libraryVm::clearHistory,
+                            modifier = Modifier,
+                        )
+                        MainTab.MINE -> MineScreen(
+                            session = session,
+                            onLogin = { showLogin = true },
+                            onLogout = { container.sessionStore.clear() },
+                            onOpenSettings = { showSettings = true },
+                            favoriteCount = favorites.size,
+                            historyCount = history.size,
+                            modifier = Modifier,
+                        )
+                    }
+                }
+            }
+
+            // 底部浮层：迷你播放条 + 四标签，锚定底部、绘制在内容之上（玻璃化）
             AnimatedVisibility(
                 visible = !immersive,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .onSizeChanged { overlayHeightPx = it.height },
                 enter = expandVertically() + fadeIn(),
                 exit = shrinkVertically() + fadeOut(),
             ) {
@@ -323,44 +387,13 @@ private fun MusicBoxApp(container: AppContainer, spec: ThemeSpec, coverSeed: Col
                     BottomTabs(current = tab, onSelect = { tab = it })
                 }
             }
-        },
-    ) { innerPadding ->
-        val contentModifier = Modifier.padding(innerPadding)
-        when (tab) {
-            MainTab.SEARCH -> SearchScreen(
-                state = searchState,
-                onQueryChange = searchVm::onQueryChange,
-                onSearch = searchVm::search,
-                nowPlayingSongId = playState.currentSongId,
-                onSongClick = { index ->
-                    playerVm.play(searchState.results, index)
-                    searchState.results.getOrNull(index)?.let { libraryVm.recordPlayed(it) }
-                },
-                isFavorite = libraryVm::isFavorite,
-                onToggleFavorite = { libraryVm.toggleFavorite(it) },
-                modifier = contentModifier,
-            )
-            MainTab.FAVORITE -> FavoriteScreen(
-                songs = favorites.map { it.song },
-                nowPlayingSongId = playState.currentSongId,
-                onSongClick = { playSong(it) },
-                modifier = contentModifier,
-            )
-            MainTab.HISTORY -> HistoryScreen(
-                songs = history.map { it.song },
-                nowPlayingSongId = playState.currentSongId,
-                onSongClick = { playSong(it) },
-                onClear = libraryVm::clearHistory,
-                modifier = contentModifier,
-            )
-            MainTab.MINE -> MineScreen(
-                session = session,
-                onLogin = { showLogin = true },
-                onLogout = { container.sessionStore.clear() },
-                onOpenSettings = { showSettings = true },
-                favoriteCount = favorites.size,
-                historyCount = history.size,
-                modifier = contentModifier,
+
+            // Snackbar：抬升到底部浮层之上显示
+            SnackbarHost(
+                snackbarHostState,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = overlayBottomPadding),
             )
         }
     }

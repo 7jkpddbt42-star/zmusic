@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -17,6 +18,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -24,6 +26,9 @@ import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
+import com.musicbox.app.ui.components.liquidglass.glassBackdropSource
+import com.musicbox.app.ui.components.liquidglass.liquidGlass
+import com.musicbox.app.ui.components.liquidglass.rememberGlassBackdrop
 
 /**
  * 扫码登录页。二维码**本地用 ZXing 生成位图**（纯原生，不加载任何网页）。
@@ -44,53 +49,78 @@ fun LoginScreen(
         if (state is LoginUiState.Success) onLoggedIn()
     }
 
-    Column(
-        // 整页覆盖在标签内容之上，必须有不透明背景，否则下层页面文字会透出叠字
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.surface)
-            .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        Text("扫码登录网易云", style = MaterialTheme.typography.titleLarge)
-        Text(
-            text = "登录后可解锁完整播放与更高音质；不登录也能正常搜索与试听。",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = 8.dp, bottom = 24.dp),
+    // 页面自有玻璃背景源：不透明 surface 底遮住下层页面（防叠字），同时供二维码卡片采样
+    val backdrop = rememberGlassBackdrop()
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        // 背景源层：只放不透明底色（二维码卡片不放进这里，避免自采样鬼影）
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .glassBackdropSource(backdrop)
+                .background(MaterialTheme.colorScheme.surface),
         )
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Text("扫码登录网易云", style = MaterialTheme.typography.titleLarge)
+            Text(
+                text = "登录后可解锁完整播放与更高音质；不登录也能正常搜索与试听。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 8.dp, bottom = 24.dp),
+            )
 
-        when (val s = state) {
-            is LoginUiState.Loading, LoginUiState.Idle -> CircularProgressIndicator()
-            is LoginUiState.Waiting -> {
-                if (s.notice != null) {
-                    Text(
-                        text = s.notice,
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.padding(bottom = 12.dp),
-                    )
+            when (val s = state) {
+                is LoginUiState.Loading, LoginUiState.Idle -> CircularProgressIndicator()
+                is LoginUiState.Waiting -> {
+                    if (s.notice != null) {
+                        Text(
+                            text = s.notice,
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(bottom = 12.dp),
+                        )
+                    }
+                    // 二维码卡片：整块玻璃；二维码位图自带白底、画在玻璃层之上不受染色
+                    Box(
+                        modifier = Modifier.liquidGlass(
+                            backdrop = backdrop,
+                            shape = RoundedCornerShape(16.dp),
+                            blurRadius = 16.dp,
+                            tint = Color.White.copy(alpha = 0.12f),
+                        ),
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            QrImage(s.qrContent)
+                            Text("打开网易云音乐 App → 扫一扫", modifier = Modifier.padding(top = 16.dp))
+                        }
+                    }
                 }
-                QrImage(s.qrContent)
-                Text("打开网易云音乐 App → 扫一扫", modifier = Modifier.padding(top = 16.dp))
+                LoginUiState.Scanned -> {
+                    CircularProgressIndicator()
+                    Text("已扫码，请在手机上确认", modifier = Modifier.padding(top = 16.dp))
+                }
+                LoginUiState.Expired -> {
+                    Text("二维码已过期")
+                    TextButton(onClick = viewModel::refresh) { Text("刷新二维码") }
+                }
+                is LoginUiState.Failed -> {
+                    Text(s.message, color = MaterialTheme.colorScheme.error)
+                    TextButton(onClick = viewModel::refresh) { Text("重试") }
+                }
+                is LoginUiState.Success -> Text("登录成功")
             }
-            LoginUiState.Scanned -> {
-                CircularProgressIndicator()
-                Text("已扫码，请在手机上确认", modifier = Modifier.padding(top = 16.dp))
-            }
-            LoginUiState.Expired -> {
-                Text("二维码已过期")
-                TextButton(onClick = viewModel::refresh) { Text("刷新二维码") }
-            }
-            is LoginUiState.Failed -> {
-                Text(s.message, color = MaterialTheme.colorScheme.error)
-                TextButton(onClick = viewModel::refresh) { Text("重试") }
-            }
-            is LoginUiState.Success -> Text("登录成功")
-        }
 
-        TextButton(onClick = onBack, modifier = Modifier.padding(top = 24.dp)) { Text("返回") }
+            TextButton(onClick = onBack, modifier = Modifier.padding(top = 24.dp)) { Text("返回") }
+        }
     }
 }
 

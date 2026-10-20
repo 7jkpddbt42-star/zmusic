@@ -3,6 +3,7 @@ package com.musicbox.app.ui.lyric
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -18,8 +19,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -28,6 +29,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.graphicsLayer
@@ -41,6 +43,12 @@ import com.musicbox.app.lyric.LyricLine
 import com.musicbox.app.lyric.LyricWord
 import com.musicbox.app.lyric.wordProgress
 import com.musicbox.app.player.PositionSource
+import com.musicbox.app.ui.components.liquidglass.glassBackdropSource
+import com.musicbox.app.ui.components.liquidglass.liquidGlass
+import com.musicbox.app.ui.components.liquidglass.rememberGlassBackdrop
+
+/** 歌词页文字基准色：页面底色固定为深色渐变（与播放页观感一致），文字固定白色系，不随主题切换。 */
+private val Ink = Color.White
 
 /**
  * 逐字歌词页。动画由 [rememberFramePosition] 的逐帧时钟驱动（设计文档 §5.2），
@@ -69,17 +77,43 @@ internal fun LyricScreen(
     // 逐帧时钟：每帧读一次真实播放位置
     val position by rememberFramePosition(source)
 
-    Surface(modifier = modifier.fillMaxSize()) {
+    // 页面自有玻璃背景源：深色渐变底作为采样内容，顶部玻璃胶囊真实取样而非纯伪玻璃
+    val backdrop = rememberGlassBackdrop()
+
+    Box(modifier = modifier.fillMaxSize()) {
+        // 背景源层：与播放页观感一致的深色渐变（不接视频背景，保持简单）
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .glassBackdropSource(backdrop)
+                .background(
+                    Brush.verticalGradient(
+                        0f to Color(0xFF26262E),
+                        0.5f to Color(0xFF15151B),
+                        1f to Color(0xFF0A0A0E),
+                    ),
+                ),
+        )
         Column(modifier = Modifier.fillMaxSize()) {
+            // 顶部返回/歌名/译音开关：整行包进一块玻璃胶囊
             Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                    .liquidGlass(
+                        backdrop = backdrop,
+                        shape = RoundedCornerShape(24.dp),
+                        blurRadius = 18.dp,
+                        tint = Color.White.copy(alpha = 0.10f),
+                    ),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                TextButton(onClick = onCollapse) { Text("返回") }
+                TextButton(onClick = onCollapse) { Text("返回", color = Ink.copy(alpha = 0.85f)) }
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = title.orEmpty(),
                         style = MaterialTheme.typography.titleMedium,
+                        color = Ink.copy(alpha = 0.92f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         textAlign = TextAlign.Center,
@@ -88,7 +122,7 @@ internal fun LyricScreen(
                     Text(
                         text = artist.orEmpty(),
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = Ink.copy(alpha = 0.60f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         textAlign = TextAlign.Center,
@@ -98,15 +132,13 @@ internal fun LyricScreen(
                 TextButton(onClick = onToggleTranslation) {
                     Text(
                         text = "译",
-                        color = if (showTranslation) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = if (showTranslation) Ink else Ink.copy(alpha = 0.45f),
                     )
                 }
                 TextButton(onClick = onToggleRomaji) {
                     Text(
                         text = "音",
-                        color = if (showRomaji) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = if (showRomaji) Ink else Ink.copy(alpha = 0.45f),
                     )
                 }
             }
@@ -129,7 +161,7 @@ internal fun LyricScreen(
                             else -> "暂无歌词"
                         },
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = Ink.copy(alpha = 0.60f),
                     )
                 }
             }
@@ -186,8 +218,9 @@ private fun LyricLineRow(
     showRomaji: Boolean,
     onClick: () -> Unit,
 ) {
-    val onSurface = MaterialTheme.colorScheme.onSurface
-    val dim = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.40f)
+    // 深色渐变底上固定白系：当前行未唱部分淡、非当前行更灰，填充色仍用主题色
+    val onSurface = Ink
+    val dim = Ink.copy(alpha = 0.40f)
 
     // 当前行的"已唱"部分用主题色，未唱部分用半透明 onSurface；非当前行整体暗
     val baseColor = if (isActive) onSurface.copy(alpha = 0.30f) else dim
@@ -239,7 +272,7 @@ private fun LyricLineRow(
             Text(
                 text = line.translation!!,
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (isActive) 0.9f else 0.5f),
+                color = Ink.copy(alpha = if (isActive) 0.9f else 0.5f),
                 modifier = Modifier.padding(top = 2.dp),
             )
         }
@@ -247,7 +280,7 @@ private fun LyricLineRow(
             Text(
                 text = line.romaji!!,
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (isActive) 0.75f else 0.4f),
+                color = Ink.copy(alpha = if (isActive) 0.75f else 0.4f),
                 modifier = Modifier.padding(top = 2.dp),
             )
         }

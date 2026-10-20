@@ -16,7 +16,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import com.musicbox.app.ui.components.glass
+import com.musicbox.app.ui.components.liquidglass.LocalGlassBackdrop
+import com.musicbox.app.ui.components.liquidglass.liquidGlass
 
 /** 底部四标签。用自写 `when` 切换，不引入 navigation-compose（保持轻量）。 */
 enum class MainTab(val label: String) {
@@ -28,14 +29,16 @@ enum class MainTab(val label: String) {
 
 @Composable
 fun BottomTabs(current: MainTab, onSelect: (MainTab) -> Unit) {
-    // 底栏玻璃化：NavigationBar 容器透明，外层 Box 提供玻璃底 + 顶部亮边 + 顶部高光
+    // 底栏玻璃化：NavigationBar 容器透明，外层整体一块玻璃实时折射壳层背景源；
+    // 条目选中态高亮由 NavigationBarItem 自带，保持不变
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .glass(
-                shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
-                tintAlpha = 0.82f,
-                borderAlpha = 0.24f,
+            .liquidGlass(
+                backdrop = LocalGlassBackdrop.current,
+                shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+                blurRadius = 20.dp,
+                tint = Color.White.copy(alpha = 0.14f),
             ),
     ) {
         NavigationBar(containerColor = Color.Transparent) {

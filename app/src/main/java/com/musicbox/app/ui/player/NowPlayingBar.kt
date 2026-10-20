@@ -20,9 +20,11 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.musicbox.app.ui.components.glass
+import com.musicbox.app.ui.components.liquidglass.LocalGlassBackdrop
+import com.musicbox.app.ui.components.liquidglass.liquidGlass
 import com.musicbox.app.ui.theme.ArtworkImage
 
 /** 底部迷你播放条。点整条打开播放页，右侧按钮直接播放/暂停。 */
@@ -36,14 +38,16 @@ internal fun NowPlayingBar(
 ) {
     if (!state.hasCurrent) return
 
-    // 液态玻璃横条：贴在底部，只圆顶部两角 + 顶部亮边；进度线/封面/文字/按钮布局与行为不变
+    // 液态玻璃横条：贴在底部、只圆顶部两角，实时折射壳层背景源（标签页内容）；
+    // 进度线/封面/文字/按钮布局与行为不变
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .glass(
-                shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
-                tintAlpha = 0.72f,
-                borderAlpha = 0.26f,
+            .liquidGlass(
+                backdrop = LocalGlassBackdrop.current,
+                shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+                blurRadius = 20.dp,
+                tint = Color.White.copy(alpha = 0.14f),
             ),
     ) {
         Column(modifier = Modifier.clickable(onClick = onExpand)) {

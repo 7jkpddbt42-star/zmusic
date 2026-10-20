@@ -68,6 +68,9 @@ import com.musicbox.app.ui.components.ParticleField
 import com.musicbox.app.ui.components.VinylRecord
 import com.musicbox.app.ui.components.WaveformSeekBar
 import com.musicbox.app.ui.components.flowingLight
+import com.musicbox.app.ui.components.liquidglass.glassBackdropSource
+import com.musicbox.app.ui.components.liquidglass.liquidGlass
+import com.musicbox.app.ui.components.liquidglass.rememberGlassBackdrop
 import com.musicbox.app.ui.components.rememberFlowProgress
 import com.musicbox.app.ui.lyric.rememberFramePosition
 import com.musicbox.app.ui.theme.ArtworkImage
@@ -116,43 +119,49 @@ internal fun PlayerScreen(
     // 拖动预览比例：非 null 时时间行显示拖动目标，抬手后回到真实播放位置
     var scrubFraction by remember { mutableStateOf<Float?>(null) }
 
+    // 播放页自有玻璃背景源：背景 / 压暗 / 渐变 / 粒子整体记录，供页面玻璃控件实时采样
+    val backdrop = rememberGlassBackdrop()
+
     Box(
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.surface),
     ) {
-        // 最底层：自定义背景（视频 > 图片 > 封面模糊），失败自动回退封面模糊
-        BackgroundLayer(
-            spec = background,
-            coverUrl = state.artworkUrl,
-            modifier = Modifier.fillMaxSize(),
-        )
+        // 背景源层：只包含要被玻璃折射的内容（玻璃元素都放在它之外，避免自采样鬼影）
+        Box(modifier = Modifier.fillMaxSize().glassBackdropSource(backdrop)) {
+            // 最底层：自定义背景（视频 > 图片 > 封面模糊），失败自动回退封面模糊
+            BackgroundLayer(
+                spec = background,
+                coverUrl = state.artworkUrl,
+                modifier = Modifier.fillMaxSize(),
+            )
 
-        // 整层压暗：视频/图片背景往往又亮又花，先统一降亮度，白字才有足够对比
-        Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.42f)))
+            // 整层压暗：视频/图片背景往往又亮又花，先统一降亮度，白字才有足够对比
+            Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.42f)))
 
-        // 暗色渐变遮罩：顶部压暗保证顶栏可读，中部留出封面，底部加重保证控制区可读。
-        // 这是"任意背景下文字都清晰"的唯一保证，不要删除。
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        0f to Color.Black.copy(alpha = 0.55f),
-                        0.25f to Color.Black.copy(alpha = 0.10f),
-                        0.52f to Color.Black.copy(alpha = 0.50f),
-                        0.75f to Color.Black.copy(alpha = 0.80f),
-                        1f to Color.Black.copy(alpha = 0.95f),
+            // 暗色渐变遮罩：顶部压暗保证顶栏可读，中部留出封面，底部加重保证控制区可读。
+            // 这是"任意背景下文字都清晰"的唯一保证，不要删除。
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            0f to Color.Black.copy(alpha = 0.55f),
+                            0.25f to Color.Black.copy(alpha = 0.10f),
+                            0.52f to Color.Black.copy(alpha = 0.50f),
+                            0.75f to Color.Black.copy(alpha = 0.80f),
+                            1f to Color.Black.copy(alpha = 0.95f),
+                        ),
                     ),
-                ),
-        )
+            )
 
-        // 粒子层：在遮罩之上、内容之下。纯装饰，不拦截点击；暂停即静止
-        ParticleField(
-            source = source,
-            isPlaying = state.isPlaying,
-            modifier = Modifier.fillMaxSize(),
-        )
+            // 粒子层：在遮罩之上、内容之下。纯装饰，不拦截点击；暂停即静止
+            ParticleField(
+                source = source,
+                isPlaying = state.isPlaying,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
 
         Column(
             modifier = Modifier
@@ -163,8 +172,17 @@ internal fun PlayerScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             if (!immersive) {
+                // 顶部栏整行包进一块玻璃胶囊（采样的是压暗后的播放页背景，白字仍清晰）
                 Row(
-                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(52.dp)
+                        .liquidGlass(
+                            backdrop = backdrop,
+                            shape = RoundedCornerShape(24.dp),
+                            blurRadius = 18.dp,
+                            tint = Color.White.copy(alpha = 0.10f),
+                        ),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     TextButton(onClick = onCollapse) {
@@ -313,9 +331,18 @@ internal fun PlayerScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // 控制区：模式 / 上一首 / 播放 / 下一首 / 收藏
+            // 控制区：模式 / 上一首 / 播放 / 下一首 / 收藏，整体包进一块玻璃；
+            // 播放键等自身内容画在玻璃层之上，不会被玻璃染色（常规与沉浸模式共用本行）
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .liquidGlass(
+                        backdrop = backdrop,
+                        shape = RoundedCornerShape(32.dp),
+                        blurRadius = 22.dp,
+                        tint = Color.White.copy(alpha = 0.12f),
+                    )
+                    .padding(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 // 左右两个 weight 容器保证播放键严格居中
@@ -371,7 +398,16 @@ internal fun PlayerScreen(
 
             if (!immersive) {
                 Spacer(modifier = Modifier.height(4.dp))
-                TextButton(onClick = onOpenLyric) {
+                // 底部歌词按钮：小玻璃胶囊
+                TextButton(
+                    onClick = onOpenLyric,
+                    modifier = Modifier.liquidGlass(
+                        backdrop = backdrop,
+                        shape = RoundedCornerShape(24.dp),
+                        blurRadius = 18.dp,
+                        tint = Color.White.copy(alpha = 0.12f),
+                    ),
+                ) {
                     Icon(
                         Icons.Filled.Lyrics,
                         contentDescription = null,
