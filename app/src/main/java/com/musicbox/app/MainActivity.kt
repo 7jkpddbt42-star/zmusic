@@ -8,6 +8,7 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.PickVisualMediaRequest
@@ -466,6 +467,8 @@ private fun MusicBoxApp(container: AppContainer, spec: ThemeSpec, coverSeed: Col
     }
 
     if (showLogin) {
+        // 系统返回键回到上一页，而不是直接退出应用
+        BackHandler { loginVm.reset(); showLogin = false }
         LoginScreen(
             viewModel = loginVm,
             onLoggedIn = {
@@ -480,6 +483,8 @@ private fun MusicBoxApp(container: AppContainer, spec: ThemeSpec, coverSeed: Col
     }
 
     if (showSettings) {
+        // 系统返回键回到上一页，而不是直接退出应用
+        BackHandler { showSettings = false }
         SettingsScreen(
             showTranslation = showTranslationPref,
             showRomaji = showRomajiPref,

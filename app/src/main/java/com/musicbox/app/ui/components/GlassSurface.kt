@@ -2,10 +2,6 @@ package com.musicbox.app.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
@@ -66,21 +62,4 @@ fun Modifier.glass(
             },
         )
         .border(1.dp, borderBrush, shape)
-}
-
-/**
- * 玻璃卡片便捷封装：`Column` 套用 [glass] 后按 [contentPadding] 内缩内容。
- * 供播放页信息区 / 控制区等直接使用。
- */
-@Composable
-fun GlassCard(
-    modifier: Modifier = Modifier,
-    shape: Shape = RoundedCornerShape(20.dp),
-    contentPadding: PaddingValues = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
-    content: @Composable ColumnScope.() -> Unit,
-) {
-    Column(
-        modifier = modifier.glass(shape).padding(contentPadding),
-        content = content,
-    )
 }

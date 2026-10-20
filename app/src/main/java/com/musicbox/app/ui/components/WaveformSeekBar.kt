@@ -71,15 +71,17 @@ fun WaveformSeekBar(
     durationMs: Long,
     onSeek: (Long) -> Unit,
     onScrub: ((Float) -> Unit)? = null,
+    playedColor: Color? = null,
+    idleColor: Color? = null,
     modifier: Modifier = Modifier,
 ) {
     val framePosition = rememberFramePosition(source)
     // 拖动中的预览比例；null 表示未拖动，显示真实播放位置
     var dragFraction by remember { mutableStateOf<Float?>(null) }
 
-    // 主题色在 Composable 体里取好，避免每帧读 MaterialTheme
-    val playedColor = MaterialTheme.colorScheme.primary
-    val idleColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.25f)
+    // 颜色在 Composable 体里取好，避免每帧读 MaterialTheme；调用方可显式指定（如压在暗遮罩上时）
+    val played = playedColor ?: MaterialTheme.colorScheme.primary
+    val idle = idleColor ?: MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.25f)
 
     val density = LocalDensity.current
     val barWidthPx = with(density) { BAR_WIDTH.toPx() }
@@ -124,7 +126,7 @@ fun WaveformSeekBar(
             val left = i * (barWidthPx + barGapPx)
             // 第 i 根条的"中心比例"，用中心而非左缘比较，避免整体偏左
             val center = (i + 0.5f) / count
-            val color = if (center <= displayFraction) playedColor else idleColor
+            val color = if (center <= displayFraction) played else idle
             drawRoundRect(
                 color = color,
                 topLeft = Offset(left, size.height - height),
