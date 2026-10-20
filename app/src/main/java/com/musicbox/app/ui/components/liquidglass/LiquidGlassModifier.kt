@@ -153,9 +153,10 @@ private fun Modifier.runtimeShaderGlass(
             if (highlight) {
                 highlightShader.setFloatUniform("size", size.width, size.height)
                 highlightShader.setFloatUniform("cornerRadii", cornerRadii[0], cornerRadii[1], cornerRadii[2], cornerRadii[3])
-                highlightShader.setColorUniform("color", Color.White.toArgb())
+                highlightShader.setColorUniform("color", Color.White.copy(alpha = 0.75f).toArgb())
                 highlightShader.setFloatUniform("angle", HIGHLIGHT_ANGLE_RAD)
-                highlightShader.setFloatUniform("falloff", 1f)
+                // falloff 越大高光越收敛于受光边缘；1 会让 Plus 混合把整块玻璃冲白、白字不可读
+                highlightShader.setFloatUniform("falloff", 3.5f)
                 drawRect(brush = ShaderBrush(highlightShader), blendMode = BlendMode.Plus)
             }
             drawOutline(outline, borderBrush, style = Stroke(width = 1.dp.toPx()))
