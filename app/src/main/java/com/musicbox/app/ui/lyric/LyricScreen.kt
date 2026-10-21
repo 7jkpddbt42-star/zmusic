@@ -39,15 +39,17 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.musicbox.app.data.BackgroundSpec
 import com.musicbox.app.lyric.LyricLine
 import com.musicbox.app.lyric.LyricWord
 import com.musicbox.app.lyric.wordProgress
 import com.musicbox.app.player.PositionSource
+import com.musicbox.app.ui.components.liquidglass.GlassAmbientBackdrop
 import com.musicbox.app.ui.components.liquidglass.glassBackdropSource
 import com.musicbox.app.ui.components.liquidglass.liquidGlass
 import com.musicbox.app.ui.components.liquidglass.rememberGlassBackdrop
 
-/** 歌词页文字基准色：页面底色固定为深色渐变（与播放页观感一致），文字固定白色系，不随主题切换。 */
+/** 歌词页文字基准色：页面使用与播放页一致的真实背景 + 压暗遮罩，文字固定白色系。 */
 private val Ink = Color.White
 
 /**
@@ -64,6 +66,8 @@ internal fun LyricScreen(
     source: PositionSource,
     title: String?,
     artist: String?,
+    background: BackgroundSpec,
+    artworkUrl: String?,
     showTranslation: Boolean,
     showRomaji: Boolean,
     onToggleTranslation: () -> Unit,
@@ -77,22 +81,20 @@ internal fun LyricScreen(
     // 逐帧时钟：每帧读一次真实播放位置
     val position by rememberFramePosition(source)
 
-    // 页面自有玻璃背景源：深色渐变底作为采样内容，顶部玻璃胶囊真实取样而非纯伪玻璃
+    // 页面自有玻璃背景源：与播放页一致的真实背景（视频/图片/封面），顶部玻璃胶囊逐帧采样
     val backdrop = rememberGlassBackdrop()
 
     Box(modifier = modifier.fillMaxSize()) {
-        // 背景源层：与播放页观感一致的深色渐变（不接视频背景，保持简单）
-        Box(
+        // 背景源层：真实背景 + 压暗遮罩，视频播放时玻璃模糊逐帧更新；
+        // 不再使用纯渐变，否则模糊与折射不可见
+        GlassAmbientBackdrop(
+            background = background,
+            artworkUrl = artworkUrl,
+            scrim = Color.Black.copy(alpha = 0.42f),
+            coverBlurRadius = 3.dp,
             modifier = Modifier
                 .fillMaxSize()
-                .glassBackdropSource(backdrop)
-                .background(
-                    Brush.verticalGradient(
-                        0f to Color(0xFF26262E),
-                        0.5f to Color(0xFF15151B),
-                        1f to Color(0xFF0A0A0E),
-                    ),
-                ),
+                .glassBackdropSource(backdrop),
         )
         Column(modifier = Modifier.fillMaxSize()) {
             // 顶部返回/歌名/译音开关：整行包进一块玻璃胶囊

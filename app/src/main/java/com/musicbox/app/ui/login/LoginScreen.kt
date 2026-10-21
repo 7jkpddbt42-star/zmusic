@@ -26,6 +26,8 @@ import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
+import com.musicbox.app.data.BackgroundSpec
+import com.musicbox.app.ui.components.liquidglass.GlassAmbientBackdrop
 import com.musicbox.app.ui.components.liquidglass.glassBackdropSource
 import com.musicbox.app.ui.components.liquidglass.liquidGlass
 import com.musicbox.app.ui.components.liquidglass.rememberGlassBackdrop
@@ -37,6 +39,8 @@ import com.musicbox.app.ui.components.liquidglass.rememberGlassBackdrop
 @Composable
 fun LoginScreen(
     viewModel: LoginViewModel,
+    background: BackgroundSpec,
+    artworkUrl: String?,
     onLoggedIn: () -> Unit,
     onBack: () -> Unit,
 ) {
@@ -49,16 +53,18 @@ fun LoginScreen(
         if (state is LoginUiState.Success) onLoggedIn()
     }
 
-    // 页面自有玻璃背景源：不透明 surface 底遮住下层页面（防叠字），同时供二维码卡片采样
+    // 页面自有玻璃背景源：真实背景（视频/图片/封面）+ 遮罩，供二维码卡片逐帧采样
     val backdrop = rememberGlassBackdrop()
 
     Box(modifier = Modifier.fillMaxSize()) {
-        // 背景源层：只放不透明底色（二维码卡片不放进这里，避免自采样鬼影）
-        Box(
+        // 背景源层：真实背景（二维码卡片不放进这里，避免自采样鬼影）；
+        // 纯色底会让模糊不可见，所以改用真实背景
+        GlassAmbientBackdrop(
+            background = background,
+            artworkUrl = artworkUrl,
             modifier = Modifier
                 .fillMaxSize()
-                .glassBackdropSource(backdrop)
-                .background(MaterialTheme.colorScheme.surface),
+                .glassBackdropSource(backdrop),
         )
         Column(
             modifier = Modifier

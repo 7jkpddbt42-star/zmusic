@@ -14,7 +14,9 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -39,6 +41,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.musicbox.app.data.BackgroundSpec
+import com.musicbox.app.ui.components.liquidglass.GlassAmbientBackdrop
 import com.musicbox.app.ui.components.liquidglass.GlassBackdrop
 import com.musicbox.app.ui.components.liquidglass.LiquidGlassPreviewContent
 import com.musicbox.app.ui.components.liquidglass.glassBackdropSource
@@ -77,6 +81,8 @@ fun SettingsScreen(
     fallbackBaseUrl: String,
     lyricCacheCount: Int,
     themeSpec: ThemeSpec,
+    background: BackgroundSpec,
+    artworkUrl: String?,
     desktopLyricEnabled: Boolean,
     desktopLyricFontSp: Int,
     desktopLyricColorArgb: Int,
@@ -106,22 +112,26 @@ fun SettingsScreen(
     var showLog by remember { mutableStateOf(false) }
     var showGlassDemo by remember { mutableStateOf(false) }
 
-    // 页面自有玻璃背景源：不透明 surface 底遮住下层页面（防叠字），同时供分组卡片采样
+    // 页面自有玻璃背景源：真实背景（视频/图片/封面）+ 遮罩，供分组卡片逐帧采样
     val backdrop = rememberGlassBackdrop()
 
     Box(modifier = modifier.fillMaxSize()) {
-        // 背景源层：只放不透明底色（玻璃卡片不放进这里，避免自采样鬼影）
-        Box(
+        // 背景源层：只放真实背景（玻璃卡片不放进这里，避免自采样鬼影）；
+        // 纯色 surface 会让模糊不可见，所以这里改用真实背景
+        GlassAmbientBackdrop(
+            background = background,
+            artworkUrl = artworkUrl,
             modifier = Modifier
                 .fillMaxSize()
-                .glassBackdropSource(backdrop)
-                .background(MaterialTheme.colorScheme.surface),
+                .glassBackdropSource(backdrop),
         )
-        // 内容层：每个分组包进一块玻璃卡片（采样纯色底，视觉是干净的毛玻璃块）
+        // 内容层：每个分组包进一块玻璃卡片（采样真实背景，模糊与折射可见）
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(16.dp)
+                .statusBarsPadding()
+                .navigationBarsPadding()
                 .verticalScroll(rememberScrollState()),
         ) {
             GlassSection(backdrop = backdrop) {

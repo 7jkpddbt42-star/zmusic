@@ -15,6 +15,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -53,6 +55,7 @@ fun BackgroundLayer(
     spec: BackgroundSpec,
     coverUrl: String?,
     modifier: Modifier = Modifier,
+    coverBlurRadius: Dp = 48.dp,
 ) {
     val path = spec.path
     // 视频不可用（解码失败/绑定失败）时回退封面模糊；切换素材时重置
@@ -65,13 +68,13 @@ fun BackgroundLayer(
         spec.type == BackgroundType.Image && path != null -> {
             val bitmap = rememberLocalBitmap(path)
             if (bitmap != null) {
-                BlurScrimBitmap(bitmap = bitmap, modifier = modifier)
+                BlurScrimBitmap(bitmap = bitmap, modifier = modifier, blurRadius = coverBlurRadius)
             } else {
-                BlurredBackdrop(url = coverUrl, modifier = modifier)
+                BlurredBackdrop(url = coverUrl, modifier = modifier, blurRadius = coverBlurRadius)
             }
         }
 
-        else -> BlurredBackdrop(url = coverUrl, modifier = modifier)
+        else -> BlurredBackdrop(url = coverUrl, modifier = modifier, blurRadius = coverBlurRadius)
     }
 }
 

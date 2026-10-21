@@ -463,6 +463,8 @@ private fun MusicBoxApp(container: AppContainer, spec: ThemeSpec, coverSeed: Col
                         source = connection,
                         title = playState.title,
                         artist = playState.artist,
+                        background = backgroundSpec,
+                        artworkUrl = playState.artworkUrl,
                         showTranslation = showTranslationPref,
                         showRomaji = showRomajiPref,
                         onToggleTranslation = {
@@ -504,6 +506,8 @@ private fun MusicBoxApp(container: AppContainer, spec: ThemeSpec, coverSeed: Col
         BackHandler { loginVm.reset(); showLogin = false }
         LoginScreen(
             viewModel = loginVm,
+            background = backgroundSpec,
+            artworkUrl = playState.artworkUrl,
             onLoggedIn = {
                 showLogin = false
                 tab = MainTab.MINE
@@ -524,6 +528,8 @@ private fun MusicBoxApp(container: AppContainer, spec: ThemeSpec, coverSeed: Col
             fallbackBaseUrl = fallbackUrl,
             lyricCacheCount = container.lyricDiskCache.size(),
             themeSpec = spec,
+            background = backgroundSpec,
+            artworkUrl = playState.artworkUrl,
             desktopLyricEnabled = desktopLyricEnabled,
             desktopLyricFontSp = desktopLyricFontSp,
             desktopLyricColorArgb = desktopLyricColorArgb,
