@@ -90,9 +90,9 @@ fun LoginScreen(
                     Box(
                         modifier = Modifier.liquidGlass(
                             backdrop = backdrop,
-                            shape = RoundedCornerShape(16.dp),
-                            blurRadius = 16.dp,
-                            tint = Color.White.copy(alpha = 0.12f),
+                            shape = RoundedCornerShape(28.dp),
+                            blurRadius = 6.dp,
+                            tint = Color.White.copy(alpha = 0.08f),
                         ),
                     ) {
                         Column(

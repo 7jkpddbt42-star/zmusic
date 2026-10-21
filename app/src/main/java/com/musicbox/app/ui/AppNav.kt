@@ -36,9 +36,9 @@ fun BottomTabs(current: MainTab, onSelect: (MainTab) -> Unit) {
             .fillMaxWidth()
             .liquidGlass(
                 backdrop = LocalGlassBackdrop.current,
-                shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-                blurRadius = 20.dp,
-                tint = Color.White.copy(alpha = 0.14f),
+                shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+                blurRadius = 6.dp,
+                tint = Color.White.copy(alpha = 0.08f),
             ),
     ) {
         NavigationBar(containerColor = Color.Transparent) {

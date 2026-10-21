@@ -6,6 +6,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -18,6 +19,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -38,6 +40,9 @@ internal fun NowPlayingBar(
 ) {
     if (!state.hasCurrent) return
 
+    // 按压反馈：clickable 与玻璃共用同一交互源，按下时整体 0.98 缩放、折射 +20%、高光 +10%
+    val interactionSource = remember { MutableInteractionSource() }
+
     // 液态玻璃横条：贴在底部、只圆顶部两角，实时折射壳层背景源（标签页内容）；
     // 进度线/封面/文字/按钮布局与行为不变
     Box(
@@ -45,12 +50,19 @@ internal fun NowPlayingBar(
             .fillMaxWidth()
             .liquidGlass(
                 backdrop = LocalGlassBackdrop.current,
-                shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-                blurRadius = 20.dp,
-                tint = Color.White.copy(alpha = 0.14f),
+                shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+                blurRadius = 6.dp,
+                tint = Color.White.copy(alpha = 0.08f),
+                interactionSource = interactionSource,
             ),
     ) {
-        Column(modifier = Modifier.clickable(onClick = onExpand)) {
+        Column(
+            modifier = Modifier.clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onExpand,
+            ),
+        ) {
             // 进度条：2dp 细线，够用且不抢视觉
             val fraction = if (state.durationMs > 0) {
                 (state.positionMs.toFloat() / state.durationMs.toFloat()).coerceIn(0f, 1f)

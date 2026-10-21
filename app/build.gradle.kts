@@ -62,6 +62,8 @@ dependencies {
     implementation("com.google.code.gson:gson:2.11.0")
     // 封面取色：纯 Java 实现，无 Android/Kotlin 兼容风险
     implementation("androidx.palette:palette-ktx:1.0.0")
+    // 液态玻璃：Kyant0/AndroidLiquidGlass 官方发布版（Compose Multiplatform，Apache-2.0）
+    implementation("io.github.kyant0:backdrop:2.0.1")
     // 扫码登录：本地生成二维码位图（纯 jar，无 Android 依赖）
     implementation("com.google.zxing:core:3.5.4")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")

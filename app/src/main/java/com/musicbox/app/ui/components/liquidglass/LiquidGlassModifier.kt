@@ -1,226 +1,185 @@
 package com.musicbox.app.ui.components.liquidglass
 
-import android.graphics.RenderEffect
-import android.graphics.RuntimeShader
-import android.graphics.Shader
+import android.os.Build
+import androidx.annotation.ChecksSdkIntAtLeast
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.interaction.InteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Outline
-import androidx.compose.ui.graphics.ShaderBrush
 import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.graphics.asComposeRenderEffect
-import androidx.compose.ui.graphics.drawOutline
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.translate
-import androidx.compose.ui.graphics.layer.drawLayer
-import androidx.compose.ui.graphics.rememberGraphicsLayer
-import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.layout.LayoutCoordinates
-import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
-import kotlin.math.PI
-import kotlin.math.roundToInt
+import com.kyant.backdrop.drawBackdrop
+import com.kyant.backdrop.effects.blur
+import com.kyant.backdrop.effects.lens
+import com.kyant.backdrop.highlight.Highlight
+import com.kyant.backdrop.highlight.HighlightStyle
+import com.kyant.backdrop.shadow.Shadow
 
-/** 高光光照角度：45°（弧度）。画布 y 轴向下，法线指向右下，受光边为左上。 */
-private val HIGHLIGHT_ANGLE_RAD = (45.0 * PI / 180.0).toFloat()
+/** 液化玻璃高光角度（度）：受光边为左上。官方库的 HighlightStyle.Default.angle 量纲为度。 */
+private const val HIGHLIGHT_ANGLE_DEG = 45f
 
-/** 白色渐变描边的不透明度上限（沿用旧 glass() 的描边思路）。 */
-private const val BORDER_ALPHA = 0.28f
+/** 高光衰减指数：2 表示高光紧贴受光边缘，不向表面内部扩散。 */
+private const val HIGHLIGHT_FALLOFF = 2f
+
+/** 边缘高光基础强度（官方库 Highlight.alpha，0–1）。 */
+private const val HIGHLIGHT_ALPHA = 0.18f
+
+/** 边缘高光宽度（官方库 Highlight.width）。 */
+private val HIGHLIGHT_WIDTH = 1.dp
+
+/** 投影：黑色 10% alpha、模糊 20dp、向下偏移 6dp（符合 iOS 26 的轻量悬浮感）。 */
+private val GLASS_SHADOW = Shadow(
+    radius = 20.dp,
+    offset = DpOffset(0.dp, 6.dp),
+    color = Color.Black.copy(alpha = 0.10f),
+)
 
 /** 降级路径中近似高光覆盖的高度占比。 */
-private const val HIGHLIGHT_FRACTION = 1f / 3f
+private const val FALLBACK_HIGHLIGHT_FRACTION = 1f / 3f
+
+/** 白色渐变描边的不透明度上限（降级路径用）。 */
+private const val FALLBACK_BORDER_ALPHA = 0.28f
 
 /**
- * 液态玻璃修饰符：实时采样 [GlassBackdrop] 记录的背景内容，按圆角矩形 SDF 做边缘折射，
- * 叠加模糊、着色与高光。算法改编自 Kyant0/AndroidLiquidGlass（Apache License 2.0）。
+ * API 能力阈值：RenderEffect 模糊自 API 31（S）起可用。
+ * 低于此版本时官方库的 blur/lens 都会静默跳过，因此直接走本地伪玻璃降级。
+ */
+@ChecksSdkIntAtLeast(Build.VERSION_CODES.S)
+fun isBackdropBlurSupported(): Boolean = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+
+/** 折射依赖 AGSL RuntimeShader，自 API 33（Tiramisu）起可用；官方库在更低版本会跳过 lens。 */
+@ChecksSdkIntAtLeast(Build.VERSION_CODES.TIRAMISU)
+fun isRuntimeShaderGlassSupported(): Boolean = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+
+/** 按压时整体缩放目标：1 → 0.98（progress 0–1）。 */
+internal fun pressScaleForProgress(progress: Float): Float = 1f - 0.02f * progress
+
+/** 按压时折射强度提升：基础值 ×（1 + 20% × progress）。 */
+internal fun refractionAmountForPress(basePx: Float, progress: Float): Float =
+    basePx * (1f + 0.20f * progress)
+
+/** 按压时高光强度提升：基础值 ×（1 + 10% × progress）。 */
+internal fun highlightAlphaForPress(baseAlpha: Float, progress: Float): Float =
+    baseAlpha * (1f + 0.10f * progress)
+
+/**
+ * API 31–32 的降级模糊：无 RuntimeShader（折射不可用），把模糊提高到 8–10dp
+ * 以弥补缺少折射带来的「玻璃感」缺失；API 33+ 保持原值（4–8dp，推荐 6dp）。
+ */
+internal fun blurRadiusForFallback(base: Dp, runtimeShaderSupported: Boolean): Dp =
+    if (runtimeShaderSupported) base else base.coerceIn(8.dp, 10.dp)
+
+/**
+ * 液态玻璃修饰符，底层直接使用 Kyant0/AndroidLiquidGlass 官方库
+ * `io.github.kyant0:backdrop:2.0.1`（Apache-2.0）。
  *
- * 三档能力降级：
- * - **T1**（API 33+ 且提供 [backdrop]）：模糊 + AGSL 折射着色器（[dispersion] 时叠加 7 采样色散），
- *   高光用 [HIGHLIGHT_SHADER] 着色器笔刷。
- * - **T2**（API 31+ 且提供 [backdrop]）：仅 RenderEffect 模糊（无 RuntimeShader），
- *   高光退化为顶部垂直渐变，[dispersion] 被忽略。
- * - **T3**（其余 / [backdrop] 为 null）：不采样背景，用半透明渐变底 + 高光 + 描边近似。
+ * 参数映射（库参数名 / 量纲 / 默认值）：
+ * - 模糊：`BackdropEffectScope.blur(radius: Float)` / px / 6dp
+ * - 折射：`BackdropEffectScope.lens(refractionHeight: Float, refractionAmount: Float,
+ *   depthEffect: Boolean = false, chromaticAberration: Boolean = false)` / px / 12dp、24dp
+ * - 色散：`chromaticAberration` 在库中只有开关（Boolean），开启即按着色器内固定强度叠加 7 采样色散，
+ *   无法传 0.06–0.12 的标量；本项目开启（等同把目标强度取为最小可见值）
+ * - 色调：`drawBackdrop(onDrawSurface)` 内 `drawRect(tint)` / 白色 alpha 0.08
+ * - 高光：`Highlight(width: Dp, blurRadius: Dp, alpha: Float, style: HighlightStyle)` /
+ *   width 1dp、alpha 0.18、Default(angle 45°, falloff 2)
+ * - 阴影：`Shadow(radius: Dp, offset: DpOffset, color: Color)` / 20dp、y 6dp、黑色 10%
+ * - 按压：`InteractionSource` 按下时整体缩放 0.98、折射 +20%、高光 +10%，spring 动画
  *
- * 与旧 `Modifier.glass()` 的伪玻璃不同，T1/T2 通过 [androidx.compose.ui.graphics.layer.GraphicsLayer]
- * 离屏记录真实背景，折射与模糊都是「看得到」的——背景滚动/播放视频时玻璃内容实时变化。
- *
- * 注意：扩展为 `@Composable`（与 `glass()` 一致），调用处需在 Composable 作用域内。
+ * 降级（本项目 minSdk 26）：
+ * - API 33+：blur + lens + 色散 + 高光全管线；
+ * - API 31–32：库内 blur 生效并提升到 8–10dp，lens/色散因无 RuntimeShader 自动跳过，
+ *   高光退化为纯白描边；
+ * - API 26–30 或无背景源：本地渐变底 + 顶部高光 + 1dp 描边伪玻璃。
  */
 @Composable
 fun Modifier.liquidGlass(
     backdrop: GlassBackdrop?,
-    shape: Shape = RoundedCornerShape(20.dp),
-    blurRadius: Dp = 22.dp,
-    refractionHeight: Dp = 6.dp,
-    refractionAmount: Float = 1.4f,
-    tint: Color = Color.White.copy(alpha = 0.12f),
-    dispersion: Boolean = false,
+    shape: Shape = RoundedCornerShape(28.dp),
+    blurRadius: Dp = 6.dp,
+    refractionHeight: Dp = 12.dp,
+    refractionAmount: Dp = 24.dp,
+    tint: Color = Color.White.copy(alpha = 0.08f),
+    dispersion: Boolean = true,
     highlight: Boolean = true,
-): Modifier = when {
-    backdrop != null && isRuntimeShaderGlassSupported() ->
-        runtimeShaderGlass(backdrop, shape, blurRadius, refractionHeight, refractionAmount, tint, dispersion, highlight)
-
-    backdrop != null && isBackdropBlurSupported() ->
-        blurGlass(backdrop, shape, blurRadius, tint, highlight)
-
-    else -> fallbackGlass(shape, tint, highlight)
-}
-
-/**
- * T1：模糊 + RuntimeShader 折射（API 33+）。
- *
- * 实现要点：
- * - 背景采样带通过录制 [GlassBackdrop.graphicsLayer] 时平移 `-backdropOffset` 对齐到玻璃局部原点，
- *   保证折射带与模糊邻域都落在玻璃尺寸的离屏缓冲区内；因此 shader 的 offset uniform 恒传 0
- *   （与「shader 内 content.eval(coord + offset)」在数学上等效，但不受缓冲区尺寸限制）。
- * - RenderEffect 链：先 MIRROR 平铺模糊（避免边缘发黑），后折射（[Shader.TileMode.MIRROR]）。
- * - 折射位移向内（refractionAmount 取负），不会采样玻璃范围之外的背景。
- */
-@Composable
-private fun Modifier.runtimeShaderGlass(
-    backdrop: GlassBackdrop,
-    shape: Shape,
-    blurRadius: Dp,
-    refractionHeight: Dp,
-    refractionAmount: Float,
-    tint: Color,
-    dispersion: Boolean,
-    highlight: Boolean,
+    interactionSource: InteractionSource? = null,
 ): Modifier {
-    val selfCoordinates = remember { mutableStateOf<LayoutCoordinates?>(null) }
-    val glassLayer = rememberGraphicsLayer()
-    // RuntimeShader 编译开销大，随组合创建一次，每帧只更新 uniforms
-    val refractionShader = remember(dispersion) {
-        RuntimeShader(if (dispersion) REFRACTION_DISPERSION_SHADER else REFRACTION_SHADER)
-    }
-    val highlightShader = remember { RuntimeShader(HIGHLIGHT_SHADER) }
-    val borderBrush = remember {
-        Brush.verticalGradient(listOf(Color.White.copy(alpha = BORDER_ALPHA), Color.White.copy(alpha = 0f)))
+    // 按压进度：0 → 1 的 spring 过渡，驱动缩放、折射与高光同步变化
+    val pressed = interactionSource?.let { it.collectIsPressedAsState().value } ?: false
+    val pressProgress by animateFloatAsState(
+        targetValue = if (pressed) 1f else 0f,
+        animationSpec = spring(
+            stiffness = Spring.StiffnessMediumLow,
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+        ),
+        label = "liquidGlassPress",
+    )
+
+    if (backdrop == null || !isBackdropBlurSupported()) {
+        return fallbackGlass(shape, tint, highlight)
     }
 
+    val scale = pressScaleForProgress(pressProgress)
     return this
-        .onGloballyPositioned { selfCoordinates.value = it }
-        .clip(shape)
-        .drawWithContent {
-            val outline = shape.createOutline(size, layoutDirection, this)
-            val cornerRadii = outlineCornerRadii(outline, size.minDimension / 2f)
-            val coordinates = selfCoordinates.value
-            if (coordinates != null && size.minDimension >= 1f) {
-                val backdropOffset = backdrop.offsetFor(coordinates)
-                val blurPx = blurRadius.toPx()
-                refractionShader.setFloatUniform("size", size.width, size.height)
-                // 采样偏移由录制平移承担，offset 恒为 0（见函数注释）
-                refractionShader.setFloatUniform("offset", 0f, 0f)
-                refractionShader.setFloatUniform("cornerRadii", cornerRadii[0], cornerRadii[1], cornerRadii[2], cornerRadii[3])
-                refractionShader.setFloatUniform("refractionHeight", refractionHeight.toPx())
-                refractionShader.setFloatUniform("refractionAmount", -refractionAmount)
-                refractionShader.setFloatUniform("depthEffect", 0f)
-                if (dispersion) refractionShader.setFloatUniform("chromaticAberration", 1.2f)
-
-                // 先模糊后折射：链式 RenderEffect，外层作用在内层的输出上
-                val blurEffect = RenderEffect.createBlurEffect(blurPx, blurPx, Shader.TileMode.MIRROR)
-                val shaderEffect = RenderEffect.createRuntimeShaderEffect(refractionShader, "content")
-                val chain = RenderEffect.createChainEffect(shaderEffect, blurEffect)
-                // 把背景层中玻璃对应区域平移到局部原点，供着色器采样；
-                // 模糊/折射链作为图层属性在合成该层时生效
-                glassLayer.record(IntSize(size.width.roundToInt(), size.height.roundToInt())) {
-                    translate(-backdropOffset.x, -backdropOffset.y) {
-                        drawLayer(backdrop.graphicsLayer)
-                    }
-                }
-                glassLayer.renderEffect = chain.asComposeRenderEffect()
-            }
-
-            // 合成：折射玻璃 → 着色 → 高光 → 描边 → 元素自身内容
-            drawLayer(glassLayer)
-            drawRect(color = tint)
-            if (highlight) {
-                highlightShader.setFloatUniform("size", size.width, size.height)
-                highlightShader.setFloatUniform("cornerRadii", cornerRadii[0], cornerRadii[1], cornerRadii[2], cornerRadii[3])
-                highlightShader.setColorUniform("color", Color.White.copy(alpha = 0.75f).toArgb())
-                highlightShader.setFloatUniform("angle", HIGHLIGHT_ANGLE_RAD)
-                // falloff 越大高光越收敛于受光边缘；1 会让 Plus 混合把整块玻璃冲白、白字不可读
-                highlightShader.setFloatUniform("falloff", 3.5f)
-                drawRect(brush = ShaderBrush(highlightShader), blendMode = BlendMode.Plus)
-            }
-            drawOutline(outline, borderBrush, style = Stroke(width = 1.dp.toPx()))
-            drawContent()
+        .graphicsLayer {
+            scaleX = scale
+            scaleY = scale
         }
-}
-
-/**
- * T2：仅 RenderEffect 模糊（API 31–32，无 RuntimeShader / RuntimeShaderBrush）。
- * 录制方式与 T1 相同；高光用顶部 1/3 高度的白色垂直渐变近似。
- */
-@Composable
-private fun Modifier.blurGlass(
-    backdrop: GlassBackdrop,
-    shape: Shape,
-    blurRadius: Dp,
-    tint: Color,
-    highlight: Boolean,
-): Modifier {
-    val selfCoordinates = remember { mutableStateOf<LayoutCoordinates?>(null) }
-    val glassLayer = rememberGraphicsLayer()
-    val borderBrush = remember {
-        Brush.verticalGradient(listOf(Color.White.copy(alpha = BORDER_ALPHA), Color.White.copy(alpha = 0f)))
-    }
-
-    return this
-        .onGloballyPositioned { selfCoordinates.value = it }
-        .clip(shape)
-        .drawWithContent {
-            val outline = shape.createOutline(size, layoutDirection, this)
-            val coordinates = selfCoordinates.value
-            if (coordinates != null && size.minDimension >= 1f) {
-                val backdropOffset = backdrop.offsetFor(coordinates)
-                val blurPx = blurRadius.toPx()
-                val blurEffect = RenderEffect.createBlurEffect(blurPx, blurPx, Shader.TileMode.MIRROR)
-                glassLayer.record(IntSize(size.width.roundToInt(), size.height.roundToInt())) {
-                    translate(-backdropOffset.x, -backdropOffset.y) {
-                        drawLayer(backdrop.graphicsLayer)
-                    }
-                }
-                glassLayer.renderEffect = blurEffect.asComposeRenderEffect()
-            }
-
-            drawLayer(glassLayer)
-            drawRect(color = tint)
-            if (highlight) {
-                val h = size.height * HIGHLIGHT_FRACTION
-                drawRect(
-                    brush = Brush.verticalGradient(
-                        colors = listOf(Color.White.copy(alpha = 0.35f), Color.Transparent),
-                        startY = 0f,
-                        endY = h,
-                    ),
-                    size = Size(size.width, h),
+        .drawBackdrop(
+            backdrop = backdrop,
+            shape = { shape },
+            effects = {
+                // 模糊只做辅助：API 33+ 为 6dp，保留背景轮廓，避免把纹理抹平
+                blur(blurRadiusForFallback(blurRadius, isRuntimeShaderGlassSupported()).toPx())
+                // 折射主导：位移量随按压 +20%
+                lens(
+                    refractionHeight = refractionHeight.toPx(),
+                    refractionAmount = refractionAmountForPress(refractionAmount.toPx(), pressProgress),
+                    depthEffect = false,
+                    chromaticAberration = dispersion,
                 )
-            }
-            drawOutline(outline, borderBrush, style = Stroke(width = 1.dp.toPx()))
-            drawContent()
-        }
+            },
+            highlight = if (highlight) {
+                {
+                    Highlight(
+                        width = HIGHLIGHT_WIDTH,
+                        blurRadius = HIGHLIGHT_WIDTH / 2f,
+                        alpha = highlightAlphaForPress(HIGHLIGHT_ALPHA, pressProgress),
+                        style = HighlightStyle.Default(
+                            color = Color.White,
+                            angle = HIGHLIGHT_ANGLE_DEG,
+                            falloff = HIGHLIGHT_FALLOFF,
+                        ),
+                    )
+                }
+            } else {
+                null
+            },
+            shadow = { GLASS_SHADOW },
+            onDrawSurface = {
+                // 低 alpha 白色着色：只提亮，不变成半透明白色塑料板
+                drawRect(tint)
+            },
+        )
 }
 
 /**
- * T3：无背景采样（背景层缺失或 API < 31）。半透明渐变底 + 顶部高光 + 1dp 白色渐变描边，
- * 视觉接近旧 glass() 但更亮更脆。
+ * API < 31 / 缺少背景源时的伪玻璃：半透明渐变底 + 顶部高光 + 1dp 白色渐变描边。
+ * 不采样背景（不具备 RenderEffect），但保证视觉仍是玻璃而非纯色块。
  */
 @Composable
 private fun Modifier.fallbackGlass(shape: Shape, tint: Color, highlight: Boolean): Modifier {
@@ -228,15 +187,16 @@ private fun Modifier.fallbackGlass(shape: Shape, tint: Color, highlight: Boolean
         Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.18f), tint))
     }
     val borderBrush = remember {
-        Brush.verticalGradient(listOf(Color.White.copy(alpha = BORDER_ALPHA), Color.White.copy(alpha = 0f)))
+        Brush.verticalGradient(
+            listOf(Color.White.copy(alpha = FALLBACK_BORDER_ALPHA), Color.White.copy(alpha = 0f)),
+        )
     }
     return this
-        .clip(shape)
         .background(fillBrush, shape)
         .then(
             if (highlight) {
                 Modifier.drawBehind {
-                    val h = size.height * HIGHLIGHT_FRACTION
+                    val h = size.height * FALLBACK_HIGHLIGHT_FRACTION
                     drawRect(
                         brush = Brush.verticalGradient(
                             colors = listOf(Color.White.copy(alpha = 0.22f), Color.Transparent),
@@ -251,23 +211,4 @@ private fun Modifier.fallbackGlass(shape: Shape, tint: Color, highlight: Boolean
             },
         )
         .border(1.dp, borderBrush, shape)
-}
-
-/**
- * 从 [Outline] 提取四角圆角半径（左上/右上/右下/左下，px）并钳制到 [maxRadius]；
- * 非圆角轮廓（矩形等）返回全 0。
- */
-private fun outlineCornerRadii(outline: Outline, maxRadius: Float): FloatArray = when (outline) {
-    is Outline.Rounded -> {
-        val rect = outline.roundRect
-        cornerRadiiFloatArray(
-            topLeftPx = rect.topLeftCornerRadius.x,
-            topRightPx = rect.topRightCornerRadius.x,
-            bottomRightPx = rect.bottomRightCornerRadius.x,
-            bottomLeftPx = rect.bottomLeftCornerRadius.x,
-            maxRadius = maxRadius,
-        )
-    }
-
-    else -> cornerRadiiFloatArray(0f, 0f, 0f, 0f, maxRadius)
 }

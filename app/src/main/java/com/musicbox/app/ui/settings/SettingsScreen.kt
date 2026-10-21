@@ -37,7 +37,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.musicbox.app.ui.components.liquidglass.GlassBackdrop
+import com.musicbox.app.ui.components.liquidglass.LiquidGlassPreviewContent
 import com.musicbox.app.ui.components.liquidglass.glassBackdropSource
 import com.musicbox.app.ui.components.liquidglass.liquidGlass
 import com.musicbox.app.ui.components.liquidglass.rememberGlassBackdrop
@@ -101,6 +104,7 @@ fun SettingsScreen(
 ) {
     var urlDraft by remember(fallbackBaseUrl) { mutableStateOf(fallbackBaseUrl) }
     var showLog by remember { mutableStateOf(false) }
+    var showGlassDemo by remember { mutableStateOf(false) }
 
     // 页面自有玻璃背景源：不透明 surface 底遮住下层页面（防叠字），同时供分组卡片采样
     val backdrop = rememberGlassBackdrop()
@@ -211,6 +215,23 @@ fun SettingsScreen(
                         modifier = Modifier.padding(top = 4.dp),
                     )
                 }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            GlassSection(backdrop = backdrop) {
+                Text("液态玻璃", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "基于官方库 Kyant0/Backdrop：折射主导、6dp 辅助模糊、8% 白色着色、边缘色散；" +
+                        "低版本系统自动降级为渐变伪玻璃。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+                Button(
+                    onClick = { showGlassDemo = true },
+                    modifier = Modifier.padding(top = 8.dp),
+                ) { Text("打开纹理验收页") }
             }
 
             Spacer(modifier = Modifier.height(12.dp))
@@ -342,6 +363,27 @@ fun SettingsScreen(
         }
     }
 
+    // 全屏纹理验收页：玻璃下方是图标网格 + 文字卡片 + 噪点图片，专门用于观察折射与色散
+    if (showGlassDemo) {
+        Dialog(
+            onDismissRequest = { showGlassDemo = false },
+            properties = DialogProperties(
+                usePlatformDefaultWidth = false,
+                decorFitsSystemWindows = false,
+            ),
+        ) {
+            Box(modifier = Modifier.fillMaxSize().background(Color(0xFF14141A))) {
+                LiquidGlassPreviewContent()
+                TextButton(
+                    onClick = { showGlassDemo = false },
+                    modifier = Modifier.align(Alignment.TopEnd).padding(top = 40.dp, end = 12.dp),
+                ) {
+                    Text("关闭", color = Color.White)
+                }
+            }
+        }
+    }
+
     if (showLog) {
         AlertDialog(
             onDismissRequest = { showLog = false },
@@ -372,9 +414,9 @@ private fun GlassSection(
             .fillMaxWidth()
             .liquidGlass(
                 backdrop = backdrop,
-                shape = RoundedCornerShape(16.dp),
-                blurRadius = 16.dp,
-                tint = Color.White.copy(alpha = 0.12f),
+                shape = RoundedCornerShape(28.dp),
+                blurRadius = 6.dp,
+                tint = Color.White.copy(alpha = 0.08f),
             )
             .padding(16.dp),
         content = content,

@@ -179,9 +179,9 @@ internal fun PlayerScreen(
                         .height(52.dp)
                         .liquidGlass(
                             backdrop = backdrop,
-                            shape = RoundedCornerShape(24.dp),
-                            blurRadius = 18.dp,
-                            tint = Color.White.copy(alpha = 0.10f),
+                            shape = RoundedCornerShape(28.dp),
+                            blurRadius = 6.dp,
+                            tint = Color.White.copy(alpha = 0.08f),
                         ),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -339,8 +339,8 @@ internal fun PlayerScreen(
                     .liquidGlass(
                         backdrop = backdrop,
                         shape = RoundedCornerShape(32.dp),
-                        blurRadius = 22.dp,
-                        tint = Color.White.copy(alpha = 0.12f),
+                        blurRadius = 6.dp,
+                        tint = Color.White.copy(alpha = 0.08f),
                     )
                     .padding(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -403,9 +403,9 @@ internal fun PlayerScreen(
                     onClick = onOpenLyric,
                     modifier = Modifier.liquidGlass(
                         backdrop = backdrop,
-                        shape = RoundedCornerShape(24.dp),
-                        blurRadius = 18.dp,
-                        tint = Color.White.copy(alpha = 0.12f),
+                        shape = RoundedCornerShape(28.dp),
+                        blurRadius = 6.dp,
+                        tint = Color.White.copy(alpha = 0.08f),
                     ),
                 ) {
                     Icon(

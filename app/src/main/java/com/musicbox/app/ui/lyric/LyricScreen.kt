@@ -102,9 +102,9 @@ internal fun LyricScreen(
                     .padding(horizontal = 12.dp, vertical = 8.dp)
                     .liquidGlass(
                         backdrop = backdrop,
-                        shape = RoundedCornerShape(24.dp),
-                        blurRadius = 18.dp,
-                        tint = Color.White.copy(alpha = 0.10f),
+                        shape = RoundedCornerShape(28.dp),
+                        blurRadius = 6.dp,
+                        tint = Color.White.copy(alpha = 0.08f),
                     ),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
