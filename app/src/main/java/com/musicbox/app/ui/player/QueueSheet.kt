@@ -1,9 +1,12 @@
 package com.musicbox.app.ui.player
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -12,9 +15,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -33,6 +36,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -53,14 +57,27 @@ import com.musicbox.app.ui.components.liquidglass.rememberGlassBackdrop
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-/** 面板淡出时长；与 fadeOut 动画保持一致后再真正关闭 Dialog。 */
-private const val QUEUE_FADE_OUT_MS = 180L
+/** 抽屉打开：自下而上滑入。 */
+private const val QUEUE_SLIDE_IN_MS = 340
+
+/** 抽屉收起：下滑离场，比进场略快。 */
+private const val QUEUE_SLIDE_OUT_MS = 260
+
+/** 抽屉占屏高度比例，接近主流播放器的队列抽屉。 */
+private const val QUEUE_SHEET_HEIGHT_FRACTION = 0.72f
+
+/** 抽屉打开前的预热帧数：先让背景层录几帧，玻璃滑入时折射立刻可见。 */
+private const val QUEUE_BACKDROP_WARMUP_FRAMES = 2
 
 /**
- * 队列面板：查看 / 删除 / 切换播放模式。
+ * 队列抽屉：查看 / 删除 / 切换播放模式。
  *
- * 视觉与设置页一致：窗口内自带真实背景源（视频/图片/封面），底部面板是一块液态玻璃，
- * 采样这层背景，模糊与折射都可见。打开与关闭都用淡入淡出，不做滑入滑出。
+ * 交互是自下而上的抽屉：底部滑入、点击遮罩或返回键收起。
+ *
+ * 液态玻璃仍然是实时渲染：窗口内自带真实背景源（视频/图片/封面）并持续录制，
+ * 抽屉玻璃每帧采样这层背景，拖动队列时折射与模糊跟手变化。
+ * 打开前先空跑几帧让背景源完成首帧录制（预热），因此滑入的第一帧就有玻璃质感，
+ * 不会出现「先是一块纯色、过一帧才变玻璃」的闪变。
  */
 @Composable
 internal fun QueueSheet(
@@ -79,15 +96,26 @@ internal fun QueueSheet(
     var closing by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
-    LaunchedEffect(Unit) { shown = true }
+    // 遮罩随抽屉一起过渡：抽屉滑入时逐渐压暗，收起时同步淡出
+    val scrimAlpha by animateFloatAsState(
+        targetValue = if (shown) 0.46f else 0f,
+        animationSpec = tween(QUEUE_SLIDE_IN_MS),
+        label = "queueScrim",
+    )
 
-    // 先播放淡出动画，再真正关闭窗口
+    // 预热：先让背景源绘制几帧再触发滑入，玻璃首帧就是真实折射
+    LaunchedEffect(Unit) {
+        repeat(QUEUE_BACKDROP_WARMUP_FRAMES) { withFrameNanos { } }
+        shown = true
+    }
+
+    // 先播放收起动画，再真正关闭窗口
     val requestClose: () -> Unit = {
         if (!closing) {
             closing = true
             scope.launch {
                 shown = false
-                delay(QUEUE_FADE_OUT_MS)
+                delay(QUEUE_SLIDE_OUT_MS.toLong())
                 onDismiss()
             }
         }
@@ -101,22 +129,28 @@ internal fun QueueSheet(
         ),
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            // 背景源层：只放真实背景，玻璃面板放在内容层，避免自采样鬼影
+            // 背景源层：只放真实背景，玻璃抽屉放在内容层，避免自采样鬼影
             GlassAmbientBackdrop(
                 background = background,
                 artworkUrl = artworkUrl,
-                scrim = MaterialTheme.colorScheme.surface.copy(alpha = 0.46f),
+                scrim = MaterialTheme.colorScheme.surface.copy(alpha = scrimAlpha),
                 modifier = Modifier.fillMaxSize().glassBackdropSource(backdrop),
             )
 
             AnimatedVisibility(
                 visible = shown,
-                enter = fadeIn(tween(220)),
-                exit = fadeOut(tween(180)),
+                enter = slideInVertically(
+                    initialOffsetY = { height -> height },
+                    animationSpec = tween(QUEUE_SLIDE_IN_MS, easing = FastOutSlowInEasing),
+                ),
+                exit = slideOutVertically(
+                    targetOffsetY = { height -> height },
+                    animationSpec = tween(QUEUE_SLIDE_OUT_MS, easing = FastOutLinearInEasing),
+                ),
                 modifier = Modifier.fillMaxSize(),
             ) {
                 Box(modifier = Modifier.fillMaxSize()) {
-                    // 点击面板以外的区域关闭
+                    // 点击抽屉以外的区域关闭
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
@@ -132,17 +166,31 @@ internal fun QueueSheet(
                             modifier = Modifier
                                 .align(Alignment.BottomCenter)
                                 .fillMaxWidth()
-                                .navigationBarsPadding()
-                                .padding(bottom = 10.dp),
+                                .fillMaxHeight(QUEUE_SHEET_HEIGHT_FRACTION),
                             shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
                         ) {
                             Column(
                                 modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                                    .fillMaxSize()
+                                    .navigationBarsPadding(),
+                                horizontalAlignment = Alignment.CenterHorizontally,
                             ) {
+                                // 抽屉把手
+                                Box(
+                                    modifier = Modifier
+                                        .padding(top = 10.dp)
+                                        .size(width = 40.dp, height = 4.dp)
+                                        .clip(RoundedCornerShape(50))
+                                        .background(
+                                            MaterialTheme.colorScheme.onSurfaceVariant
+                                                .copy(alpha = 0.35f),
+                                        ),
+                                )
+
                                 Row(
-                                    modifier = Modifier.fillMaxWidth(),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(start = 20.dp, end = 16.dp, top = 14.dp, bottom = 6.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
                                     Column(modifier = Modifier.weight(1f)) {
@@ -167,8 +215,13 @@ internal fun QueueSheet(
                                 }
 
                                 LazyColumn(
-                                    modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp),
-                                    contentPadding = PaddingValues(vertical = 8.dp),
+                                    modifier = Modifier.fillMaxWidth().weight(1f),
+                                    contentPadding = PaddingValues(
+                                        start = 12.dp,
+                                        end = 12.dp,
+                                        top = 8.dp,
+                                        bottom = 12.dp,
+                                    ),
                                     verticalArrangement = Arrangement.spacedBy(2.dp),
                                 ) {
                                     items(state.queue, key = { it.index }) { item ->
