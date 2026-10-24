@@ -41,7 +41,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.musicbox.app.data.BackgroundBlur
 import com.musicbox.app.data.BackgroundSpec
+import com.musicbox.app.data.LyricStyle
+import com.musicbox.app.data.PlayerStyle
 import com.musicbox.app.ui.components.liquidglass.GlassAmbientBackdrop
 import com.musicbox.app.ui.components.liquidglass.GlassBackdrop
 import com.musicbox.app.ui.components.liquidglass.LiquidGlassPreviewContent
@@ -78,16 +81,21 @@ private val WALLPAPER_AVAILABLE = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
 fun SettingsScreen(
     showTranslation: Boolean,
     showRomaji: Boolean,
+    lyricStyle: LyricStyle,
+    playerStyle: PlayerStyle,
     fallbackBaseUrl: String,
     lyricCacheCount: Int,
     themeSpec: ThemeSpec,
     background: BackgroundSpec,
+    backgroundBlur: BackgroundBlur,
     artworkUrl: String?,
     desktopLyricEnabled: Boolean,
     desktopLyricFontSp: Int,
     desktopLyricColorArgb: Int,
     onToggleTranslation: (Boolean) -> Unit,
     onToggleRomaji: (Boolean) -> Unit,
+    onLyricStyle: (LyricStyle) -> Unit,
+    onPlayerStyle: (PlayerStyle) -> Unit,
     onSaveFallbackUrl: (String) -> Unit,
     onClearLyricCache: () -> Unit,
     onThemeMode: (ThemeMode) -> Unit,
@@ -100,17 +108,18 @@ fun SettingsScreen(
     onDesktopLyricFontSp: (Int) -> Unit,
     onDesktopLyricColorArgb: (Int) -> Unit,
     backgroundLabel: String,
+    onBackgroundBlur: (BackgroundBlur) -> Unit,
     onPickBackgroundImage: () -> Unit,
     onPickBackgroundVideo: () -> Unit,
     onResetBackground: () -> Unit,
     logText: () -> String,
     onClearLog: () -> Unit,
     onBack: () -> Unit,
+    onOpenGlassDemo: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var urlDraft by remember(fallbackBaseUrl) { mutableStateOf(fallbackBaseUrl) }
     var showLog by remember { mutableStateOf(false) }
-    var showGlassDemo by remember { mutableStateOf(false) }
 
     // 页面自有玻璃背景源：真实背景（视频/图片/封面）+ 遮罩，供分组卡片逐帧采样
     val backdrop = rememberGlassBackdrop()
@@ -239,7 +248,7 @@ fun SettingsScreen(
                     modifier = Modifier.padding(top = 4.dp),
                 )
                 Button(
-                    onClick = { showGlassDemo = true },
+                    onClick = onOpenGlassDemo,
                     modifier = Modifier.padding(top = 8.dp),
                 ) { Text("打开纹理验收页") }
             }
@@ -259,6 +268,24 @@ fun SettingsScreen(
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(top = 8.dp),
                 )
+                Text(
+                    "背景模糊",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(top = 12.dp),
+                )
+                Row(modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
+                    BackgroundBlur.entries.forEach { blur ->
+                        ChoiceChip(blur.label, backgroundBlur == blur) {
+                            onBackgroundBlur(blur)
+                        }
+                    }
+                }
+                Text(
+                    "模糊越小背景纹理越清晰；关闭后保留原图细节。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -274,7 +301,28 @@ fun SettingsScreen(
             Spacer(modifier = Modifier.height(12.dp))
 
             GlassSection(backdrop = backdrop) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("歌词", style = MaterialTheme.typography.titleMedium)
+
+                Text(
+                    "歌词样式",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(top = 12.dp),
+                )
+                Row(modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
+                    ChoiceChip("聚焦", lyricStyle == LyricStyle.Focus) { onLyricStyle(LyricStyle.Focus) }
+                    ChoiceChip("经典", lyricStyle == LyricStyle.Classic) { onLyricStyle(LyricStyle.Classic) }
+                }
+                Text(
+                    "聚焦：当前行居中大字，其余行缩小淡出；经典：统一字号列表。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+
+                Row(
+                    modifier = Modifier.padding(top = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
                     Text("歌词译文默认显示", modifier = Modifier.weight(1f))
                     Switch(checked = showTranslation, onCheckedChange = onToggleTranslation)
                 }
@@ -282,6 +330,40 @@ fun SettingsScreen(
                     Text("歌词罗马音默认显示", modifier = Modifier.weight(1f))
                     Switch(checked = showRomaji, onCheckedChange = onToggleRomaji)
                 }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            GlassSection(backdrop = backdrop) {
+                Text("播放页", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "播放页风格",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(top = 12.dp),
+                )
+                Column(modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
+                    PlayerStyle.values().toList().chunked(3).forEach { row ->
+                        Row(modifier = Modifier.fillMaxWidth()) {
+                            row.forEach { style ->
+                                ChoiceChip(style.label, playerStyle == style) {
+                                    onPlayerStyle(style)
+                                }
+                            }
+                        }
+                    }
+                }
+                Text(
+                    text = playerStyle.description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+                Text(
+                    "切换立即生效，不会中断播放或丢失进度；也可以在播放页点「更多」快速切换。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
             }
 
             Spacer(modifier = Modifier.height(12.dp))
@@ -370,27 +452,6 @@ fun SettingsScreen(
             }
 
             TextButton(onClick = onBack, modifier = Modifier.padding(top = 24.dp)) { Text("返回") }
-        }
-    }
-
-    // 全屏纹理验收页：玻璃下方是图标网格 + 文字卡片 + 噪点图片，专门用于观察折射与色散
-    if (showGlassDemo) {
-        Dialog(
-            onDismissRequest = { showGlassDemo = false },
-            properties = DialogProperties(
-                usePlatformDefaultWidth = false,
-                decorFitsSystemWindows = false,
-            ),
-        ) {
-            Box(modifier = Modifier.fillMaxSize().background(Color(0xFF14141A))) {
-                LiquidGlassPreviewContent()
-                TextButton(
-                    onClick = { showGlassDemo = false },
-                    modifier = Modifier.align(Alignment.TopEnd).padding(top = 40.dp, end = 12.dp),
-                ) {
-                    Text("关闭", color = Color.White)
-                }
-            }
         }
     }
 

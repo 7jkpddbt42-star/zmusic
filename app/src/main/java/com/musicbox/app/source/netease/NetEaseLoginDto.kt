@@ -24,6 +24,14 @@ internal data class AccountRespDto(
 internal data class ProfileDto(
     @SerializedName("userId") val userId: Long = 0L,
     @SerializedName("nickname") val nickname: String? = null,
+    @SerializedName("avatarUrl") val avatarUrl: String? = null,
+)
+
+/** /eapi/v1/user/detail/{uid} 的响应，只取听歌统计与头像。 */
+internal data class UserDetailRespDto(
+    @SerializedName("code") val code: Int = -1,
+    @SerializedName("listenSongs") val listenSongs: Int = 0,
+    @SerializedName("profile") val profile: ProfileDto? = null,
 )
 
 /** 登录 cookie 串 → 键值对。形如 `MUSIC_U=xxx; __csrf=yyy; NMTID=zzz`。 */

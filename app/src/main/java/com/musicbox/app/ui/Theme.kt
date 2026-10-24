@@ -1,10 +1,13 @@
 package com.musicbox.app.ui
 
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Shapes
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
 import com.musicbox.app.ui.theme.ThemeMode
 import com.musicbox.app.ui.theme.ThemeSpec
 import com.musicbox.app.ui.theme.buildScheme
@@ -14,6 +17,15 @@ import com.musicbox.app.ui.theme.buildScheme
  * MainActivity 会在播放页/歌词页外层提供 player seed，本页主题随之切换，主页不受影响。
  */
 val LocalPageSeed = compositionLocalOf<Color?> { null }
+
+/** 全局圆角：与液态玻璃胶囊/卡片的 24–30dp 圆角保持同一套语言。 */
+private val MusicBoxShapes = Shapes(
+    extraSmall = RoundedCornerShape(8.dp),
+    small = RoundedCornerShape(12.dp),
+    medium = RoundedCornerShape(16.dp),
+    large = RoundedCornerShape(22.dp),
+    extraLarge = RoundedCornerShape(28.dp),
+)
 
 /**
  * 应用主题。按 [spec] 的模式决定深/浅，用 [seed] 生成 [androidx.compose.material3.ColorScheme]。
@@ -28,5 +40,9 @@ internal fun MusicBoxTheme(spec: ThemeSpec, seed: Color?, content: @Composable (
         ThemeMode.Light -> false
         ThemeMode.Dark -> true
     }
-    MaterialTheme(colorScheme = buildScheme(effectiveSeed, dark), content = content)
+    MaterialTheme(
+        colorScheme = buildScheme(effectiveSeed, dark),
+        shapes = MusicBoxShapes,
+        content = content,
+    )
 }

@@ -1,6 +1,9 @@
 package com.musicbox.app
 
 import android.Manifest
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -11,6 +14,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -18,22 +22,30 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutHorizontally
-import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.material3.SnackbarHost
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -41,26 +53,39 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.musicbox.app.data.BackgroundSpec
 import com.musicbox.app.data.BackgroundType
+import com.musicbox.app.data.PlayerStyle
 import com.musicbox.app.desktoplyric.DesktopLyricService
-import com.musicbox.app.model.Song
 import com.musicbox.app.ui.BottomTabs
 import com.musicbox.app.ui.LocalPageSeed
 import com.musicbox.app.ui.MainTab
 import com.musicbox.app.ui.MusicBoxTheme
+import com.musicbox.app.ui.components.liquidglass.GlassAmbientBackdrop
+import com.musicbox.app.ui.components.liquidglass.LiquidGlassPreviewContent
 import com.musicbox.app.ui.components.liquidglass.LocalGlassBackdrop
 import com.musicbox.app.ui.components.liquidglass.glassBackdropSource
 import com.musicbox.app.ui.components.liquidglass.rememberGlassBackdrop
-import com.musicbox.app.ui.library.FavoriteScreen
+import com.musicbox.app.ui.components.player.LocalPlayerBackgroundBlur
+import com.musicbox.app.ui.home.AllPlaylistsScreen
+import com.musicbox.app.ui.home.HomeScreen
+import com.musicbox.app.ui.home.HomeViewModel
+import com.musicbox.app.ui.home.PlaylistDetailScreen
+import com.musicbox.app.ui.home.PlaylistTarget
 import com.musicbox.app.ui.library.HistoryScreen
 import com.musicbox.app.ui.library.LibraryViewModel
 import com.musicbox.app.ui.login.LoginScreen
@@ -73,11 +98,15 @@ import com.musicbox.app.ui.player.PlaybackConnection
 import com.musicbox.app.ui.player.PlayerScreen
 import com.musicbox.app.ui.player.PlayerViewModel
 import com.musicbox.app.ui.player.QueueSheet
+import com.musicbox.app.ui.styles.PlayerActions
 import com.musicbox.app.ui.search.SearchScreen
 import com.musicbox.app.ui.search.SearchViewModel
 import com.musicbox.app.ui.settings.SettingsScreen
 import com.musicbox.app.ui.theme.SeedSource
 import com.musicbox.app.ui.theme.ThemeSpec
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
 /** 按来源解析当前生效的主题 seed。壁纸取色在低版本/取色失败时返回 null。 */
@@ -93,8 +122,14 @@ private fun resolveSeed(
 }
 
 class MainActivity : ComponentActivity() {
+    /** 从通知栏 / 锁屏媒体卡片点进来的次数，UI 收到后切到播放页。 */
+    private val openPlayerRequests = MutableStateFlow(0)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // 全面屏：内容绘制到状态栏/导航栏下方，由各页的 WindowInsets 自行留白
+        enableEdgeToEdge()
+        consumeOpenPlayerIntent(intent)
         val container = AppContainer(this)
         setContent {
             val spec by container.settings.themeSpec.collectAsStateWithLifecycle()
@@ -105,15 +140,38 @@ class MainActivity : ComponentActivity() {
             }
             MusicBoxTheme(spec = spec, seed = mainSeed) {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    MusicBoxApp(container, spec, coverSeed)
+                    MusicBoxApp(container, spec, coverSeed, openPlayerRequests)
                 }
             }
         }
     }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        consumeOpenPlayerIntent(intent)
+    }
+
+    private fun consumeOpenPlayerIntent(intent: Intent?) {
+        if (intent?.getBooleanExtra(EXTRA_OPEN_PLAYER, false) == true) {
+            intent.removeExtra(EXTRA_OPEN_PLAYER)
+            openPlayerRequests.value += 1
+        }
+    }
+
+    companion object {
+        /** 通知栏 / 锁屏媒体卡片点击后直达播放页。 */
+        const val EXTRA_OPEN_PLAYER = "com.musicbox.app.extra.OPEN_PLAYER"
+    }
 }
 
 @Composable
-private fun MusicBoxApp(container: AppContainer, spec: ThemeSpec, coverSeed: Color?) {
+private fun MusicBoxApp(
+    container: AppContainer,
+    spec: ThemeSpec,
+    coverSeed: Color?,
+    openPlayerRequests: StateFlow<Int>,
+) {
     val context = LocalContext.current
 
     // MediaController 的连接随 Composition 建立与释放
@@ -127,7 +185,11 @@ private fun MusicBoxApp(container: AppContainer, spec: ThemeSpec, coverSeed: Col
         factory = viewModelFactory { initializer { SearchViewModel(container.provider) } },
     )
     val playerVm: PlayerViewModel = viewModel(
-        factory = viewModelFactory { initializer { PlayerViewModel(container.provider, connection) } },
+        factory = viewModelFactory {
+            initializer {
+                PlayerViewModel(container.provider, connection, container.listeningStats)
+            }
+        },
     )
     val lyricVm: LyricViewModel = viewModel(
         factory = viewModelFactory {
@@ -142,12 +204,23 @@ private fun MusicBoxApp(container: AppContainer, spec: ThemeSpec, coverSeed: Col
     )
     val libraryVm: LibraryViewModel = viewModel(
         factory = viewModelFactory {
-            initializer { LibraryViewModel(container.favorites, container.history) }
+            initializer { LibraryViewModel(container.history) }
         },
     )
     val loginVm: LoginViewModel = viewModel(
         factory = viewModelFactory {
             initializer { LoginViewModel(container.loginApi, container.sessionStore) }
+        },
+    )
+    val homeVm: HomeViewModel = viewModel(
+        factory = viewModelFactory {
+            initializer {
+                HomeViewModel(
+                    personalApi = container.personalApi,
+                    loginApi = container.loginApi,
+                    sessionStore = container.sessionStore,
+                )
+            }
         },
     )
 
@@ -157,16 +230,26 @@ private fun MusicBoxApp(container: AppContainer, spec: ThemeSpec, coverSeed: Col
     val message by playerVm.message.collectAsStateWithLifecycle()
     val lyricState by lyricVm.state.collectAsStateWithLifecycle()
     val currentLineText by lyricVm.currentLineText.collectAsStateWithLifecycle()
+    val homeState by homeVm.state.collectAsStateWithLifecycle()
+    val homeDetail by homeVm.detail.collectAsStateWithLifecycle()
+    val fmSongs by homeVm.fmSongs.collectAsStateWithLifecycle()
+    val fmLoading by homeVm.fmLoading.collectAsStateWithLifecycle()
+    val homeMessage by homeVm.message.collectAsStateWithLifecycle()
     val showTranslationPref by container.settings.showTranslation.collectAsStateWithLifecycle()
     val showRomajiPref by container.settings.showRomaji.collectAsStateWithLifecycle()
+    val lyricStylePref by container.settings.lyricStyle.collectAsStateWithLifecycle()
+    val playerStylePref by container.settings.playerStyle.collectAsStateWithLifecycle()
     val fallbackUrl by container.settings.fallbackBaseUrl.collectAsStateWithLifecycle()
     val desktopLyricEnabled by container.settings.desktopLyricEnabled.collectAsStateWithLifecycle()
     val desktopLyricFontSp by container.settings.desktopLyricFontSp.collectAsStateWithLifecycle()
     val desktopLyricColorArgb by container.settings.desktopLyricColorArgb.collectAsStateWithLifecycle()
     val backgroundSpec by container.settings.backgroundSpec.collectAsStateWithLifecycle()
+    val backgroundBlurPref by container.settings.backgroundBlur.collectAsStateWithLifecycle()
     val session by container.sessionStore.session.collectAsStateWithLifecycle()
-    val favorites by libraryVm.favorites.collectAsStateWithLifecycle()
+    val listeningSeconds by container.listeningStats.totalSeconds.collectAsStateWithLifecycle()
     val history by libraryVm.history.collectAsStateWithLifecycle()
+    // 网易云「我喜欢的音乐」曲目 id：播放页心形按钮的真实状态来源
+    val likedSongIds by homeVm.likedSongIds.collectAsStateWithLifecycle()
 
     // 歌词开关：偏好持久化 → 注入歌词页
     LaunchedEffect(showTranslationPref) { lyricVm.setShowTranslation(showTranslationPref) }
@@ -226,17 +309,23 @@ private fun MusicBoxApp(container: AppContainer, spec: ThemeSpec, coverSeed: Col
         }
     }
 
-    var tab by remember { mutableStateOf(MainTab.SEARCH) }
+    var tab by remember { mutableStateOf(MainTab.HOME) }
     var showPlayer by remember { mutableStateOf(false) }
     var showLyric by remember { mutableStateOf(false) }
     var showQueue by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     var showLogin by remember { mutableStateOf(false) }
-    // 播放页沉浸模式：长按播放键切换；关闭播放页时自动退出
-    var immersive by remember { mutableStateOf(false) }
+    var showGlassDemo by remember { mutableStateOf(false) }
+    var showHistory by remember { mutableStateOf(false) }
+    var showPlaylists by remember { mutableStateOf(false) }
 
-    LaunchedEffect(showPlayer) {
-        if (!showPlayer) immersive = false
+    // 从通知栏 / 锁屏媒体卡片进入 → 直接展开播放页
+    val openPlayerRequest by openPlayerRequests.collectAsStateWithLifecycle()
+    LaunchedEffect(openPlayerRequest) {
+        if (openPlayerRequest > 0) {
+            showLyric = false
+            showPlayer = true
+        }
     }
 
     // 断网 / 恢复：明确提示（设计文档 §9）
@@ -282,6 +371,20 @@ private fun MusicBoxApp(container: AppContainer, spec: ThemeSpec, coverSeed: Col
         }
     }
 
+    // 私人FM：取到歌单后直接起播，并记一条历史
+    LaunchedEffect(fmSongs) {
+        val songs = fmSongs ?: return@LaunchedEffect
+        playerVm.play(songs, 0)
+        songs.firstOrNull()?.let(libraryVm::recordPlayed)
+        homeVm.consumeFm()
+    }
+    LaunchedEffect(homeMessage) {
+        homeMessage?.let {
+            snackbarHostState.showSnackbar(it)
+            homeVm.consumeMessage()
+        }
+    }
+
     // Android 13+ 通知栏需要运行时权限（拒绝也不影响播放，只少一条通知）
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -297,104 +400,210 @@ private fun MusicBoxApp(container: AppContainer, spec: ThemeSpec, coverSeed: Col
         }
     }
 
-    fun playSong(song: Song) {
-        val index = searchState.results.indexOfFirst { it.id == song.id }
-        if (index >= 0) {
-            playerVm.play(searchState.results, index)
-        } else {
-            playerVm.play(listOf(song), 0)
-        }
-        libraryVm.recordPlayed(song)
-    }
-
-    // 壳层玻璃背景：标签页内容整体作为背景源，底部浮层玻璃实时采样它
+    // 壳层玻璃背景：页面环境背景 + 标签内容整体作为背景源，底部浮层玻璃实时采样它
     val shellBackdrop = rememberGlassBackdrop()
+    // 页面级背景源：只录环境背景，供页内玻璃控件（搜索栏 / 列表面板）采样，
+    // 避免它们采样到自身产生鬼影
+    val pageBackdrop = rememberGlassBackdrop()
     // 底部浮层（迷你条 + 四标签）实测高度：内容区据此向下留出空隙
     var overlayHeightPx by remember { mutableStateOf(0) }
     val overlayBottomPadding = with(LocalDensity.current) { overlayHeightPx.toDp() }
-    // 沉浸模式下浮层整体移除，清掉残留测量值，让内容重新占满全屏
-    LaunchedEffect(immersive) { if (immersive) overlayHeightPx = 0 }
 
-    CompositionLocalProvider(LocalGlassBackdrop provides shellBackdrop) {
+    // 状态栏/导航栏图标：浅色主题用深色图标；播放页/歌词页/验收页背景始终压暗，固定用浅色图标
+    val darkSystemSurface = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    SystemBarsIcons(lightIcons = darkSystemSurface || showPlayer || showLyric || showGlassDemo)
+
+    CompositionLocalProvider(
+        LocalGlassBackdrop provides shellBackdrop,
+    ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            // 内容区：整体是玻璃背景源；内部再留出状态栏与底部浮层高度的空隙
+            // 内容区：整体是玻璃背景源
             Box(modifier = Modifier.fillMaxSize().glassBackdropSource(shellBackdrop)) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .statusBarsPadding()
-                        .padding(bottom = overlayBottomPadding),
-                ) {
-                    when (tab) {
-                        MainTab.SEARCH -> SearchScreen(
-                            state = searchState,
-                            onQueryChange = searchVm::onQueryChange,
-                            onSearch = searchVm::search,
-                            nowPlayingSongId = playState.currentSongId,
-                            onSongClick = { index ->
-                                playerVm.play(searchState.results, index)
-                                searchState.results.getOrNull(index)?.let { libraryVm.recordPlayed(it) }
-                            },
-                            isFavorite = libraryVm::isFavorite,
-                            onToggleFavorite = { libraryVm.toggleFavorite(it) },
-                            modifier = Modifier,
-                        )
-                        MainTab.FAVORITE -> FavoriteScreen(
-                            songs = favorites.map { it.song },
-                            nowPlayingSongId = playState.currentSongId,
-                            onSongClick = { playSong(it) },
-                            modifier = Modifier,
-                        )
-                        MainTab.HISTORY -> HistoryScreen(
-                            songs = history.map { it.song },
-                            nowPlayingSongId = playState.currentSongId,
-                            onSongClick = { playSong(it) },
-                            onClear = libraryVm::clearHistory,
-                            modifier = Modifier,
-                        )
-                        MainTab.MINE -> MineScreen(
-                            session = session,
-                            onLogin = { showLogin = true },
-                            onLogout = { container.sessionStore.clear() },
-                            onOpenSettings = { showSettings = true },
-                            favoriteCount = favorites.size,
-                            historyCount = history.size,
-                            modifier = Modifier,
-                        )
+                // 环境背景：铺满整屏（含状态栏与底部浮层之下），四个标签页共享同一份背景源；
+                // 纯色背景会让玻璃模糊不可见，所以用当前背景/封面的真实纹理
+                Box(modifier = Modifier.fillMaxSize().glassBackdropSource(pageBackdrop)) {
+                    GlassAmbientBackdrop(
+                        background = backgroundSpec,
+                        artworkUrl = playState.artworkUrl,
+                        scrim = MaterialTheme.colorScheme.surface.copy(alpha = 0.42f),
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+                // 页内玻璃采样页面级背景源；底部浮层仍采样壳层背景源
+                CompositionLocalProvider(LocalGlassBackdrop provides pageBackdrop) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .windowInsetsPadding(
+                                WindowInsets.safeDrawing.only(
+                                    WindowInsetsSides.Top + WindowInsetsSides.Horizontal,
+                                ),
+                            )
+                            .padding(bottom = overlayBottomPadding),
+                    ) {
+                        when (tab) {
+                            MainTab.HOME -> HomeScreen(
+                                state = homeState,
+                                session = session,
+                                fmLoading = fmLoading,
+                                nowPlayingSongId = playState.currentSongId,
+                                onLogin = { showLogin = true },
+                                onRefresh = homeVm::refresh,
+                                onPlayFm = homeVm::playFm,
+                                onOpenTarget = homeVm::openDetail,
+                                onOpenPlaylists = { showPlaylists = true },
+                                onPlayList = { songs, index ->
+                                    playerVm.play(songs, index)
+                                    songs.getOrNull(index)?.let(libraryVm::recordPlayed)
+                                },
+                                modifier = Modifier,
+                            )
+                            MainTab.SEARCH -> SearchScreen(
+                                state = searchState,
+                                onQueryChange = searchVm::onQueryChange,
+                                onSearch = searchVm::search,
+                                nowPlayingSongId = playState.currentSongId,
+                                onSongClick = { index ->
+                                    playerVm.play(searchState.results, index)
+                                    searchState.results.getOrNull(index)?.let { libraryVm.recordPlayed(it) }
+                                },
+                                modifier = Modifier,
+                            )
+                            MainTab.MINE -> MineScreen(
+                                session = session,
+                                history = history.map { it.song },
+                                liked = homeState.liked,
+                                playlists = homeState.playlists,
+                                nowPlayingSongId = playState.currentSongId,
+                                listeningSeconds = listeningSeconds,
+                                onLogin = { showLogin = true },
+                                onLogout = { container.sessionStore.clear() },
+                                onOpenSettings = { showSettings = true },
+                                onOpenHistory = { showHistory = true },
+                                onOpenTarget = homeVm::openDetail,
+                                onOpenPlaylists = { showPlaylists = true },
+                                onSongClick = { songs, index ->
+                                    playerVm.play(songs, index)
+                                    songs.getOrNull(index)?.let(libraryVm::recordPlayed)
+                                },
+                                modifier = Modifier,
+                            )
+                        }
+
+                        // 列表类覆盖页放在内容区内渲染：底部迷你播放条与导航保持可见、可点。
+                        // 之前它们画在整个壳层之上，会把迷你条一起盖住。
+
+                        // 最近播放（从「我的」进入）
+                        if (showHistory) {
+                            BackHandler { showHistory = false }
+                            GlassOverlay(
+                                background = backgroundSpec,
+                                artworkUrl = playState.artworkUrl,
+                            ) { overlayModifier ->
+                                val songs = history.map { it.song }
+                                HistoryScreen(
+                                    songs = songs,
+                                    nowPlayingSongId = playState.currentSongId,
+                                    onSongClick = { song ->
+                                        val index = songs.indexOfFirst { it.id == song.id }
+                                        if (index >= 0) {
+                                            playerVm.play(songs, index)
+                                            libraryVm.recordPlayed(song)
+                                        }
+                                    },
+                                    onClear = libraryVm::clearHistory,
+                                    onBack = { showHistory = false },
+                                    modifier = overlayModifier,
+                                )
+                            }
+                        }
+
+                        // 全部歌单（首页/「我的」只预览前几个，完整列表走这里的 LazyColumn）
+                        if (showPlaylists) {
+                            BackHandler { showPlaylists = false }
+                            GlassOverlay(
+                                background = backgroundSpec,
+                                artworkUrl = playState.artworkUrl,
+                            ) { overlayModifier ->
+                                AllPlaylistsScreen(
+                                    playlists = homeState.playlists,
+                                    onOpenPlaylist = { playlist ->
+                                        homeVm.openDetail(
+                                            PlaylistTarget(
+                                                title = playlist.name,
+                                                coverUrl = playlist.coverUrl,
+                                                subtitle = "${playlist.trackCount} 首 · 我的歌单",
+                                                playlistId = playlist.id,
+                                            ),
+                                        )
+                                    },
+                                    onBack = { showPlaylists = false },
+                                    modifier = overlayModifier,
+                                )
+                            }
+                        }
+
+                        // 歌单详情（每日推荐 / 我喜欢的音乐 / 个人歌单）
+                        homeDetail?.let { detail ->
+                            BackHandler { homeVm.closeDetail() }
+                            GlassOverlay(
+                                background = backgroundSpec,
+                                artworkUrl = playState.artworkUrl,
+                            ) { overlayModifier ->
+                                PlaylistDetailScreen(
+                                    state = detail,
+                                    nowPlayingSongId = playState.currentSongId,
+                                    onBack = homeVm::closeDetail,
+                                    onPlayAll = {
+                                        if (detail.songs.isNotEmpty()) {
+                                            playerVm.play(detail.songs, 0)
+                                            libraryVm.recordPlayed(detail.songs[0])
+                                        }
+                                    },
+                                    onSongClick = { index ->
+                                        playerVm.play(detail.songs, index)
+                                        detail.songs.getOrNull(index)?.let(libraryVm::recordPlayed)
+                                    },
+                                    onRetry = homeVm::retryDetail,
+                                    modifier = overlayModifier,
+                                )
+                            }
+                        }
                     }
                 }
             }
 
-            // 底部浮层：迷你播放条 + 四标签，锚定底部、绘制在内容之上（玻璃化）
-            AnimatedVisibility(
-                visible = !immersive,
+            // 底部浮层：悬浮玻璃迷你条 + 导航胶囊，四周留白并避开手势条
+            Column(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(horizontal = 12.dp, vertical = 6.dp)
                     .onSizeChanged { overlayHeightPx = it.height },
-                enter = expandVertically() + fadeIn(),
-                exit = shrinkVertically() + fadeOut(),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Column {
-                    NowPlayingBar(
-                        state = playState,
-                        onExpand = {
-                            showLyric = false
-                            showPlayer = true
-                        },
-                        onTogglePlay = playerVm::togglePlay,
-                        lyricLine = currentLineText,
-                    )
-                    BottomTabs(current = tab, onSelect = { tab = it })
-                }
+                NowPlayingBar(
+                    state = playState,
+                    source = connection,
+                    onExpand = {
+                        showLyric = false
+                        showPlayer = true
+                    },
+                    onTogglePlay = playerVm::togglePlay,
+                    lyricLine = currentLineText,
+                )
+                BottomTabs(
+                    current = tab,
+                    onSelect = { next ->
+                        // 切换标签时回到标签根页面，避免详情页残留盖在新标签之上
+                        homeVm.closeDetail()
+                        showPlaylists = false
+                        showHistory = false
+                        tab = next
+                    },
+                )
             }
 
-            // Snackbar：抬升到底部浮层之上显示
-            SnackbarHost(
-                snackbarHostState,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = overlayBottomPadding),
-            )
         }
     }
 
@@ -412,70 +621,83 @@ private fun MusicBoxApp(container: AppContainer, spec: ThemeSpec, coverSeed: Col
         }
     }
 
+    // 播放页动作契约：风格布局只通过这些回调操作播放器，不接触控制器
+    val playerActions = PlayerActions(
+        onCollapse = { showPlayer = false },
+        onTogglePlay = playerVm::togglePlay,
+        onPrevious = playerVm::previous,
+        onNext = playerVm::next,
+        onSeek = playerVm::seekTo,
+        onCycleMode = playerVm::cyclePlayMode,
+        onOpenQueue = { showQueue = true },
+        onOpenLyric = { showLyric = true },
+        onToggleLike = {
+            playState.currentSongId?.let(homeVm::toggleLike)
+        },
+        onSelectQueueItem = playerVm::selectQueueItem,
+        onOpenStyleSwitcher = {},
+        onSelectStyle = { style ->
+            container.settings.setPlayerStyle(style)
+            scope.launch { snackbarHostState.showSnackbar("已切换到${style.label}") }
+        },
+        onNotify = { text -> scope.launch { snackbarHostState.showSnackbar(text) } },
+        onArtworkLoaded = { container.artworkTheme.update(it) },
+    )
+
     val playerLayer: @Composable () -> Unit = {
-        // 播放页整层：从底部滑入 / 滑出 + 淡入淡出，替换原本的瞬时切换
-        AnimatedVisibility(
-            visible = showPlayer,
-            enter = slideInVertically { it } + fadeIn(),
-            exit = slideOutVertically { it } + fadeOut(),
-        ) {
-            Box {
-                // 播放页：从底部滑入；进入歌词页时滑出（与歌词页互斥）
-                AnimatedVisibility(
-                    visible = !showLyric,
-                    enter = slideInVertically { it },
-                    exit = slideOutVertically { it },
-                ) {
-                    PlayerScreen(
-                        state = playState,
-                        source = connection,
-                        background = backgroundSpec,
-                        modeLabel = mode.label,
-                        isFavorite = playState.currentSongId?.let(libraryVm::isFavorite) == true,
-                        immersive = immersive,
-                        onToggleImmersive = { immersive = !immersive },
-                        onToggleFavorite = {
-                            val id = playState.currentSongId ?: return@PlayerScreen
-                            val song = searchState.results.firstOrNull { it.id == id }
-                                ?: history.firstOrNull { it.song.id == id }?.song
-                                ?: favorites.firstOrNull { it.song.id == id }?.song
-                            if (song != null) libraryVm.toggleFavorite(song)
-                        },
-                        onCollapse = { showPlayer = false },
-                        onTogglePlay = playerVm::togglePlay,
-                        onNext = playerVm::next,
-                        onPrevious = playerVm::previous,
-                        onSeek = playerVm::seekTo,
-                        onCycleMode = playerVm::cyclePlayMode,
-                        onOpenQueue = { showQueue = true },
-                        onOpenLyric = { showLyric = true },
-                        onArtworkLoaded = { container.artworkTheme.update(it) },
-                    )
-                }
-                // 歌词页：从右侧滑入 / 滑出，与播放页互斥
-                AnimatedVisibility(
-                    visible = showLyric,
-                    enter = slideInHorizontally { it },
-                    exit = slideOutHorizontally { it },
-                ) {
-                    LyricScreen(
-                        state = lyricState,
-                        source = connection,
-                        title = playState.title,
-                        artist = playState.artist,
-                        background = backgroundSpec,
-                        artworkUrl = playState.artworkUrl,
-                        showTranslation = showTranslationPref,
-                        showRomaji = showRomajiPref,
-                        onToggleTranslation = {
-                            container.settings.setShowTranslation(!showTranslationPref)
-                        },
-                        onToggleRomaji = {
-                            container.settings.setShowRomaji(!showRomajiPref)
-                        },
-                        onSeek = playerVm::seekTo,
-                        onCollapse = { showLyric = false },
-                    )
+        // 背景模糊档位下发到所有播放页风格；设置在播放页打开时修改也会立即生效
+        CompositionLocalProvider(LocalPlayerBackgroundBlur provides backgroundBlurPref.radiusDp.dp) {
+            // 播放页整层：淡入淡出，不再从底部滑入
+            AnimatedVisibility(
+                visible = showPlayer,
+                enter = fadeIn(tween(320)),
+                exit = fadeOut(tween(260)),
+            ) {
+                // 不透明底色：播放页 ↔ 歌词页交叉淡化时不会透出下面的主界面
+                Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
+                    // 播放页与歌词页互斥，切换时淡入淡出（不做横向滑动）
+                    AnimatedVisibility(
+                        visible = !showLyric,
+                        enter = fadeIn(tween(300)),
+                        exit = fadeOut(tween(240)),
+                    ) {
+                        PlayerScreen(
+                            state = playState,
+                            source = connection,
+                            background = backgroundSpec,
+                            modeLabel = mode.label,
+                            isLiked = playState.currentSongId?.let { it in likedSongIds } == true,
+                            lyricLine = currentLineText,
+                            playerStyle = playerStylePref,
+                            actions = playerActions,
+                        )
+                    }
+                    // 歌词页：与播放页交叉淡化
+                    AnimatedVisibility(
+                        visible = showLyric,
+                        enter = fadeIn(tween(320)),
+                        exit = fadeOut(tween(240)),
+                    ) {
+                        LyricScreen(
+                            state = lyricState,
+                            source = connection,
+                            title = playState.title,
+                            artist = playState.artist,
+                            background = backgroundSpec,
+                            artworkUrl = playState.artworkUrl,
+                            showTranslation = showTranslationPref,
+                            showRomaji = showRomajiPref,
+                            lyricStyle = lyricStylePref,
+                            onToggleTranslation = {
+                                container.settings.setShowTranslation(!showTranslationPref)
+                            },
+                            onToggleRomaji = {
+                                container.settings.setShowRomaji(!showRomajiPref)
+                            },
+                            onSeek = playerVm::seekTo,
+                            onCollapse = { showLyric = false },
+                        )
+                    }
                 }
             }
         }
@@ -494,6 +716,8 @@ private fun MusicBoxApp(container: AppContainer, spec: ThemeSpec, coverSeed: Col
         QueueSheet(
             state = playState,
             modeLabel = mode.label,
+            background = backgroundSpec,
+            artworkUrl = playState.artworkUrl,
             onDismiss = { showQueue = false },
             onSelect = { index -> playerVm.selectQueueItem(index) },
             onRemove = playerVm::removeQueueItem,
@@ -510,7 +734,7 @@ private fun MusicBoxApp(container: AppContainer, spec: ThemeSpec, coverSeed: Col
             artworkUrl = playState.artworkUrl,
             onLoggedIn = {
                 showLogin = false
-                tab = MainTab.MINE
+                tab = MainTab.HOME
             },
             onBack = {
                 loginVm.reset()
@@ -525,16 +749,21 @@ private fun MusicBoxApp(container: AppContainer, spec: ThemeSpec, coverSeed: Col
         SettingsScreen(
             showTranslation = showTranslationPref,
             showRomaji = showRomajiPref,
+            lyricStyle = lyricStylePref,
+            playerStyle = playerStylePref,
             fallbackBaseUrl = fallbackUrl,
             lyricCacheCount = container.lyricDiskCache.size(),
             themeSpec = spec,
             background = backgroundSpec,
+            backgroundBlur = backgroundBlurPref,
             artworkUrl = playState.artworkUrl,
             desktopLyricEnabled = desktopLyricEnabled,
             desktopLyricFontSp = desktopLyricFontSp,
             desktopLyricColorArgb = desktopLyricColorArgb,
             onToggleTranslation = container.settings::setShowTranslation,
             onToggleRomaji = container.settings::setShowRomaji,
+            onLyricStyle = container.settings::setLyricStyle,
+            onPlayerStyle = container.settings::setPlayerStyle,
             onSaveFallbackUrl = container.settings::setFallbackBaseUrl,
             onClearLyricCache = {
                 container.lyricDiskCache.clear()
@@ -587,9 +816,132 @@ private fun MusicBoxApp(container: AppContainer, spec: ThemeSpec, coverSeed: Col
                 container.settings.resetBackground()
                 container.backgroundStore.clearAll()
             },
+            onBackgroundBlur = container.settings::setBackgroundBlur,
             logText = container.log::readAll,
             onClearLog = container.log::clear,
             onBack = { showSettings = false },
+            onOpenGlassDemo = { showGlassDemo = true },
         )
     }
+
+    // 全屏纹理验收页：同窗口覆盖，状态栏图标按深色背景切浅色（无独立 Dialog 窗口）
+    if (showGlassDemo) {
+        BackHandler { showGlassDemo = false }
+        Box(modifier = Modifier.fillMaxSize().background(Color(0xFF14141A))) {
+            LiquidGlassPreviewContent()
+            TextButton(
+                onClick = { showGlassDemo = false },
+                modifier = Modifier.align(Alignment.TopEnd).padding(top = 40.dp, end = 12.dp),
+            ) {
+                Text("关闭", color = Color.White)
+            }
+        }
+    }
+
+    // 提示条画在最顶层：播放页、歌词页、登录页、设置页都会盖住壳层，
+    // 提示（例如喜欢同步的结果或失败原因）必须能显示在这些页面之上。
+    Box(modifier = Modifier.fillMaxSize()) {
+        TopToastHost(
+            state = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = overlayBottomPadding)
+                .padding(horizontal = 24.dp),
+        )
+    }
+}
+
+/**
+ * 顶层提示条。Material 的 SnackbarHost 在播放页之上实测不显示，这里自绘一个
+ * 淡入淡出的胶囊提示，保证任何页面上的操作反馈都可见。
+ */
+@Composable
+private fun TopToastHost(
+    state: SnackbarHostState,
+    modifier: Modifier = Modifier,
+    durationMs: Long = 3200,
+) {
+    val data = state.currentSnackbarData
+    // 退出动画期间 data 已为 null，用最后一条文案撑住内容
+    var message by remember { mutableStateOf("") }
+    if (data != null && data.visuals.message.isNotBlank()) message = data.visuals.message
+    LaunchedEffect(data) {
+        if (data != null) {
+            delay(durationMs)
+            data.dismiss()
+        }
+    }
+    AnimatedVisibility(
+        visible = data != null,
+        enter = fadeIn(tween(200)),
+        exit = fadeOut(tween(180)),
+        modifier = modifier,
+    ) {
+        Box(
+            modifier = Modifier
+                .clip(RoundedCornerShape(20.dp))
+                .background(MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.94f))
+                .padding(horizontal = 20.dp, vertical = 13.dp),
+        ) {
+            Text(
+                text = message,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.inverseOnSurface,
+            )
+        }
+    }
+}
+
+/**
+ * 全屏玻璃覆盖页（最近播放 / 歌单详情）。
+ * 自带环境背景源：覆盖在主界面上时，页内玻璃只采样这一层背景，不会把被遮住的
+ * 列表糊进玻璃里。
+ */
+@Composable
+private fun GlassOverlay(
+    background: BackgroundSpec,
+    artworkUrl: String?,
+    content: @Composable (Modifier) -> Unit,
+) {
+    val backdrop = rememberGlassBackdrop()
+    Box(modifier = Modifier.fillMaxSize()) {
+        GlassAmbientBackdrop(
+            background = background,
+            artworkUrl = artworkUrl,
+            scrim = MaterialTheme.colorScheme.surface.copy(alpha = 0.42f),
+            modifier = Modifier.fillMaxSize().glassBackdropSource(backdrop),
+        )
+        CompositionLocalProvider(LocalGlassBackdrop provides backdrop) {
+            // 覆盖页已渲染在内容区内（该区已处理状态栏/刘海与底部浮层留白），
+            // 这里只铺满自身区域，避免重复 inset 造成二次留白。
+            content(Modifier.fillMaxSize())
+        }
+    }
+}
+
+/**
+ * 全面屏系统栏图标明暗：浅色界面用深色图标，深色界面/压暗页面用浅色图标。
+ * enableEdgeToEdge() 已把系统栏设为透明，这里只负责图标对比度。
+ */
+@Composable
+private fun SystemBarsIcons(lightIcons: Boolean) {
+    val view = LocalView.current
+    if (view.isInEditMode) return
+    val window = view.context.findActivity()?.window ?: return
+    // 只在目标取值变化时下发一次，避免每次重组都覆盖其它窗口（如验收页 Dialog）的设定
+    LaunchedEffect(lightIcons) {
+        WindowCompat.getInsetsController(window, view).apply {
+            isAppearanceLightStatusBars = !lightIcons
+            isAppearanceLightNavigationBars = !lightIcons
+        }
+    }
+}
+
+private fun Context.findActivity(): Activity? {
+    var context: Context = this
+    while (context is ContextWrapper) {
+        if (context is Activity) return context
+        context = context.baseContext
+    }
+    return null
 }

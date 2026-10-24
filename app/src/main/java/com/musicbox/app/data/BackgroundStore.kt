@@ -32,6 +32,22 @@ data class BackgroundSpec(
 }
 
 /**
+ * 播放页背景模糊档位。[radiusDp] 直接作为背景位图的模糊半径：
+ * 越小保留越多纹理，越大越柔和。默认 [Standard]（28dp），比旧版固定 48dp 更轻。
+ */
+enum class BackgroundBlur(val key: String, val radiusDp: Int, val label: String) {
+    Off("off", 0, "关闭"),
+    Soft("soft", 16, "轻柔"),
+    Standard("standard", 28, "标准"),
+    Deep("deep", 44, "浓郁"),
+    ;
+
+    companion object {
+        fun fromKey(key: String?): BackgroundBlur = entries.firstOrNull { it.key == key } ?: Standard
+    }
+}
+
+/**
  * 本机背景素材仓库。
  *
  * 用户从系统相册/文件选择器选中的素材会被**复制到应用私有目录**

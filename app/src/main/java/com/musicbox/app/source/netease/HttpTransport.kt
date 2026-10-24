@@ -1,7 +1,11 @@
 package com.musicbox.app.source.netease
 
-/** 一次 HTTP 往返的结果。 */
-data class TransportResponse(val code: Int, val body: String)
+/** 一次 HTTP 往返的结果。[setCookies] 用于扫码登录 803 时从响应头取 MUSIC_U。 */
+data class TransportResponse(
+    val code: Int,
+    val body: String,
+    val setCookies: List<String> = emptyList(),
+)
 
 /**
  * 网络传输抽象。抽出来是为了让 NetEaseProvider 能在单测里注入假实现，

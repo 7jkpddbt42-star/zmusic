@@ -56,6 +56,7 @@ fun BackgroundLayer(
     coverUrl: String?,
     modifier: Modifier = Modifier,
     coverBlurRadius: Dp = 48.dp,
+    scrim: Boolean = true,
 ) {
     val path = spec.path
     // 视频不可用（解码失败/绑定失败）时回退封面模糊；切换素材时重置
@@ -68,13 +69,28 @@ fun BackgroundLayer(
         spec.type == BackgroundType.Image && path != null -> {
             val bitmap = rememberLocalBitmap(path)
             if (bitmap != null) {
-                BlurScrimBitmap(bitmap = bitmap, modifier = modifier, blurRadius = coverBlurRadius)
+                BlurScrimBitmap(
+                    bitmap = bitmap,
+                    modifier = modifier,
+                    blurRadius = coverBlurRadius,
+                    scrim = scrim,
+                )
             } else {
-                BlurredBackdrop(url = coverUrl, modifier = modifier, blurRadius = coverBlurRadius)
+                BlurredBackdrop(
+                    url = coverUrl,
+                    modifier = modifier,
+                    blurRadius = coverBlurRadius,
+                    scrim = scrim,
+                )
             }
         }
 
-        else -> BlurredBackdrop(url = coverUrl, modifier = modifier, blurRadius = coverBlurRadius)
+        else -> BlurredBackdrop(
+            url = coverUrl,
+            modifier = modifier,
+            blurRadius = coverBlurRadius,
+            scrim = scrim,
+        )
     }
 }
 

@@ -1,5 +1,10 @@
 package com.musicbox.app.ui.components.liquidglass
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
+import android.view.View
+import android.view.Window
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -10,6 +15,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -18,18 +24,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.LibraryMusic
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -44,10 +43,14 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.DialogWindowProvider
+import androidx.core.view.WindowCompat
 import com.musicbox.app.ui.MusicBoxTheme
+import com.musicbox.app.ui.components.MusicIcons
 import com.musicbox.app.ui.theme.ThemeSpec
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -70,6 +73,10 @@ private fun LiquidGlassPreview() {
 @Composable
 internal fun LiquidGlassPreviewContent() {
     val backdrop = rememberGlassBackdrop()
+
+    // 验收页背景固定为深色：把所在窗口（Activity 或 Dialog）的系统栏图标改成浅色，
+    // 否则浅色主题下会沿用深色图标，压在黑底上几乎不可见
+    SystemBarsLight()
     // 拖动玻璃卡片：位置每帧变化，验证背景采样是逐帧更新而非只采一次
     var dragOffset by remember { mutableStateOf(Offset.Zero) }
     val maxDragPx = with(LocalDensity.current) { 120.dp.toPx() }
@@ -143,7 +150,7 @@ internal fun LiquidGlassPreviewContent() {
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Icon(Icons.Filled.PlayArrow, contentDescription = null, tint = Color.White)
+                Icon(MusicIcons.Play, contentDescription = null, tint = Color.White)
                 Text("播放全部", color = Color.White)
             }
         }
@@ -154,13 +161,14 @@ internal fun LiquidGlassPreviewContent() {
 @Composable
 private fun TexturedBackdrop() {
     val icons = listOf(
-        Icons.Filled.Home, Icons.Filled.Search, Icons.Filled.LibraryMusic, Icons.Filled.Favorite,
-        Icons.Filled.Star, Icons.Filled.Settings, Icons.Filled.PlayArrow, Icons.Filled.LibraryMusic,
+        MusicIcons.Search, MusicIcons.HeartFilled, MusicIcons.MusicNote, MusicIcons.Play,
+        MusicIcons.Person, MusicIcons.Sliders, MusicIcons.Lyrics, MusicIcons.Queue,
     )
     Column(
         modifier = Modifier
             .fillMaxSize()
             .statusBarsPadding()
+            .navigationBarsPadding()
             .verticalScroll(rememberScrollState())
             .padding(16.dp),
     ) {
@@ -245,7 +253,7 @@ private fun PhotoTile(modifier: Modifier = Modifier, seed: Int) {
             drawPhotoNoise(seed)
         }
         Icon(
-            Icons.Filled.LibraryMusic,
+            MusicIcons.MusicNote,
             contentDescription = null,
             tint = Color.White.copy(alpha = 0.55f),
             modifier = Modifier.align(Alignment.Center).size(30.dp),
@@ -265,4 +273,42 @@ private fun DrawScope.drawPhotoNoise(seed: Int) {
             center = Offset(x, y),
         )
     }
+}
+
+/**
+ * 把当前窗口（Dialog 优先，其次 Activity）的系统栏图标固定为浅色。
+ * 验收页是固定深色背景，浅色主题下沿用深色图标会看不清。
+ */
+@Composable
+private fun SystemBarsLight() {
+    val view = LocalView.current
+    if (view.isInEditMode) return
+    SideEffect {
+        val window = view.findDialogWindow()
+            ?: view.context.findActivity()?.window
+            ?: return@SideEffect
+        WindowCompat.getInsetsController(window, view).apply {
+            isAppearanceLightStatusBars = false
+            isAppearanceLightNavigationBars = false
+        }
+    }
+}
+
+/** 从组合视图向上找承载它的 Dialog 窗口（`getRootView` 会一路走到 DecorView，拿不到）。 */
+private fun View.findDialogWindow(): Window? {
+    var node: View? = this
+    while (node != null) {
+        if (node is DialogWindowProvider) return node.window
+        node = node.parent as? View
+    }
+    return null
+}
+
+private fun Context.findActivity(): Activity? {
+    var context: Context = this
+    while (context is ContextWrapper) {
+        if (context is Activity) return context
+        context = context.baseContext
+    }
+    return null
 }

@@ -51,6 +51,7 @@ fun GlassAmbientBackdrop(
             spec = background,
             coverUrl = artworkUrl,
             coverBlurRadius = coverBlurRadius,
+            scrim = false,
             modifier = Modifier.fillMaxSize(),
         )
         Box(modifier = Modifier.fillMaxSize().background(effectiveScrim))

@@ -24,7 +24,7 @@ class OkHttpTransport(
             .build()
 
         client.newCall(request).execute().use { response ->
-            return TransportResponse(response.code, response.body.string())
+            return TransportResponse(response.code, response.body.string(), response.headers("Set-Cookie"))
         }
     }
 
@@ -36,7 +36,7 @@ class OkHttpTransport(
             .build()
 
         client.newCall(request).execute().use { response ->
-            return TransportResponse(response.code, response.body.string())
+            return TransportResponse(response.code, response.body.string(), response.headers("Set-Cookie"))
         }
     }
 }

@@ -105,10 +105,24 @@ class LoginViewModel(
                     is QrPollResult.Success -> {
                         sessionStore.save(r.musicU, r.csrf, null)
                         _state.value = LoginUiState.Success(null)
-                        // 昵称是可选增强，单独再取一次；失败不影响登录成功
-                        api.fetchNickname(r.musicU, r.csrf).getOrNull()?.let { nick ->
-                            sessionStore.updateNickname(nick)
-                            _state.value = LoginUiState.Success(nick)
+                        // 昵称 / 头像 / 累计听歌是可选增强，单独再取一次；失败不影响登录成功
+                        api.fetchAccount(r.musicU, r.csrf).getOrNull()?.let { profile ->
+                            sessionStore.updateProfile(
+                                profile.nickname,
+                                profile.userId,
+                                profile.avatarUrl,
+                                profile.listenSongs,
+                            )
+                            _state.value = LoginUiState.Success(profile.nickname)
+                            // 账号接口不带听歌统计，再取一次用户详情补全
+                            api.fetchUserDetail(profile.userId, r.musicU, r.csrf).getOrNull()?.let { detail ->
+                                sessionStore.updateProfile(
+                                    detail.nickname,
+                                    detail.userId,
+                                    detail.avatarUrl,
+                                    detail.listenSongs,
+                                )
+                            }
                         }
                         return
                     }

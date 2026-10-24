@@ -2,6 +2,7 @@ package com.musicbox.app.ui.login
 
 import com.musicbox.app.data.InMemoryKeyValueStore
 import com.musicbox.app.data.SessionStore
+import com.musicbox.app.source.netease.AccountProfile
 import com.musicbox.app.source.netease.LoginApi
 import com.musicbox.app.source.netease.QrPollResult
 import kotlinx.coroutines.Dispatchers
@@ -28,13 +29,13 @@ class LoginViewModelTest {
     private class FakeLoginApi(
         private val keys: MutableList<Result<String>> = mutableListOf(),
         private val polls: MutableList<Result<QrPollResult>> = mutableListOf(),
-        var nickname: Result<String?> = Result.success(null),
+        var account: Result<AccountProfile?> = Result.success(null),
     ) : LoginApi {
         override suspend fun createQrKey(): Result<String> =
             if (keys.isEmpty()) Result.failure(IllegalStateException("no key")) else keys.removeFirst()
         override suspend fun poll(unikey: String): Result<QrPollResult> =
             if (polls.isEmpty()) Result.success(QrPollResult.Waiting) else polls.removeFirst()
-        override suspend fun fetchNickname(musicU: String, csrf: String): Result<String?> = nickname
+        override suspend fun fetchAccount(musicU: String, csrf: String): Result<AccountProfile?> = account
     }
 
     private val fakeError =
@@ -61,7 +62,7 @@ class LoginViewModelTest {
         val api = FakeLoginApi(
             keys = mutableListOf(Result.success("KEY-1")),
             polls = mutableListOf(Result.success(QrPollResult.Success("U", "C"))),
-            nickname = Result.success("小明"),
+            account = Result.success(AccountProfile(9527L, "小明")),
         )
         val store = SessionStore(InMemoryKeyValueStore())
         val vm = LoginViewModel(api, store, pollIntervalMs = 2_000L)
@@ -73,6 +74,7 @@ class LoginViewModelTest {
         assertTrue(store.session.value.isLoggedIn)
         assertEquals("U", store.session.value.musicU)
         assertEquals("小明", store.session.value.nickname)
+        assertEquals(9527L, store.session.value.userId)
         assertEquals(LoginUiState.Success("小明"), vm.state.value)
     }
 

@@ -6,9 +6,9 @@ import android.os.Build
 import androidx.compose.ui.graphics.Color
 import com.musicbox.app.data.AppLog
 import com.musicbox.app.data.BackgroundStore
-import com.musicbox.app.data.FavoriteRepository
 import com.musicbox.app.data.HistoryRepository
 import com.musicbox.app.data.LyricDiskCache
+import com.musicbox.app.data.ListeningStatsStore
 import com.musicbox.app.data.SessionStore
 import com.musicbox.app.data.SettingsRepository
 import com.musicbox.app.data.SharedPrefsKeyValueStore
@@ -18,8 +18,10 @@ import com.musicbox.app.source.MusicProvider
 import com.musicbox.app.source.failover.FallbackProvider
 import com.musicbox.app.source.netease.NetEaseLoginApi
 import com.musicbox.app.source.netease.NetEaseHeader
+import com.musicbox.app.source.netease.NetEasePersonalApi
 import com.musicbox.app.source.netease.NetEaseProvider
 import com.musicbox.app.source.netease.OkHttpTransport
+import com.musicbox.app.source.netease.PersonalApi
 import com.musicbox.app.ui.theme.ArtworkThemeState
 import com.musicbox.app.ui.theme.normalizeSeed
 import java.io.File
@@ -54,6 +56,9 @@ class AppContainer(context: Context) {
 
     val sessionStore: SessionStore = SessionStore(kv)
 
+    /** 本机累计收听时长（秒），「我的」页展示。 */
+    val listeningStats = ListeningStatsStore(kv)
+
     /** 播放页封面取色的内存状态，供主题系统读取“封面取色”来源的 seed。 */
     val artworkTheme = ArtworkThemeState()
 
@@ -77,13 +82,19 @@ class AppContainer(context: Context) {
 
     val networkMonitor: NetworkMonitor = NetworkMonitor(appContext)
 
-    val favorites: FavoriteRepository = FavoriteRepository.forDir(filesDir("data"))
-
     val history: HistoryRepository = HistoryRepository.forDir(filesDir("data"))
 
     val lyricDiskCache: LyricDiskCache = LyricDiskCache.forDir(filesDir("lyrics"))
 
-    val loginApi: NetEaseLoginApi = NetEaseLoginApi(OkHttpTransport(), deviceId)
+    val loginApi: NetEaseLoginApi = NetEaseLoginApi(OkHttpTransport(), deviceId, log)
+
+    /** 个人内容（每日推荐 / 私人FM / 我的歌单），与音源共用登录会话。 */
+    val personalApi: PersonalApi = NetEasePersonalApi(
+        transport = OkHttpTransport(),
+        deviceId = deviceId,
+        session = { sessionStore.session.value },
+        appLog = log,
+    )
 
     private val netEaseProvider: MusicProvider = NetEaseProvider(
         transport = OkHttpTransport(),

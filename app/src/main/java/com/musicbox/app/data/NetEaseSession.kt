@@ -9,6 +9,12 @@ data class NetEaseSession(
     val musicU: String? = null,
     val csrf: String = "",
     val nickname: String? = null,
+    /** 账号头像地址，来自 /nuser/account/get 或 /v1/user/detail。 */
+    val avatarUrl: String? = null,
+    /** 网易云累计听歌曲数（user/detail 的 listenSongs），0 表示尚未同步。 */
+    val listenSongs: Int = 0,
+    /** 网易云用户 id。个人内容接口（每日推荐歌单 / 我的歌单）需要它。 */
+    val userId: Long = 0L,
 ) {
     val isLoggedIn: Boolean get() = !musicU.isNullOrBlank()
 

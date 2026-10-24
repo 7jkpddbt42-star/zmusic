@@ -15,20 +15,19 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.shadow as elevationShadow
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.highlight.Highlight
 import com.kyant.backdrop.highlight.HighlightStyle
-import com.kyant.backdrop.shadow.Shadow
 
 /** 液化玻璃高光角度（度）：受光边为左上。官方库的 HighlightStyle.Default.angle 量纲为度。 */
 private const val HIGHLIGHT_ANGLE_DEG = 45f
@@ -42,12 +41,8 @@ private const val HIGHLIGHT_ALPHA = 0.18f
 /** 边缘高光宽度（官方库 Highlight.width）。 */
 private val HIGHLIGHT_WIDTH = 1.dp
 
-/** 投影：黑色 10% alpha、模糊 20dp、向下偏移 6dp（符合 iOS 26 的轻量悬浮感）。 */
-private val GLASS_SHADOW = Shadow(
-    radius = 20.dp,
-    offset = DpOffset(0.dp, 6.dp),
-    color = Color.Black.copy(alpha = 0.10f),
-)
+/** 投影：原生 elevation 阴影（20dp），首帧由 RenderNode 直接绘制，不等背景层录制。 */
+private val GLASS_SHADOW_ELEVATION = 20.dp
 
 /** 降级路径中近似高光覆盖的高度占比。 */
 private const val FALLBACK_HIGHLIGHT_FRACTION = 1f / 3f
@@ -97,7 +92,7 @@ internal fun blurRadiusForFallback(base: Dp, runtimeShaderSupported: Boolean): D
  * - 色调：`drawBackdrop(onDrawSurface)` 内 `drawRect(tint)` / 白色 alpha 0.08
  * - 高光：`Highlight(width: Dp, blurRadius: Dp, alpha: Float, style: HighlightStyle)` /
  *   width 1dp、alpha 0.18、Default(angle 45°, falloff 2)
- * - 阴影：`Shadow(radius: Dp, offset: DpOffset, color: Color)` / 20dp、y 6dp、黑色 10%
+ * - 阴影：Compose 原生 `Modifier.shadow` / 20dp（首帧即可见，不走库内 Shadow）
  * - 按压：`InteractionSource` 按下时整体缩放 0.98、折射 +20%、高光 +10%，spring 动画
  *
  * 降级（本项目 minSdk 26）：
@@ -139,6 +134,14 @@ fun Modifier.liquidGlass(
             scaleX = scale
             scaleY = scale
         }
+        // 原生阴影：打开新界面/新面板时首帧就能画出，不会先缺一帧再补上
+        .elevationShadow(
+            elevation = GLASS_SHADOW_ELEVATION,
+            shape = shape,
+            clip = false,
+            ambientColor = Color.Black,
+            spotColor = Color.Black,
+        )
         .drawBackdrop(
             backdrop = backdrop,
             shape = { shape },
@@ -169,7 +172,7 @@ fun Modifier.liquidGlass(
             } else {
                 null
             },
-            shadow = { GLASS_SHADOW },
+            shadow = null,
             onDrawSurface = {
                 // 低 alpha 白色着色：只提亮，不变成半透明白色塑料板
                 drawRect(tint)
@@ -192,6 +195,13 @@ private fun Modifier.fallbackGlass(shape: Shape, tint: Color, highlight: Boolean
         )
     }
     return this
+        .elevationShadow(
+            elevation = GLASS_SHADOW_ELEVATION,
+            shape = shape,
+            clip = false,
+            ambientColor = Color.Black,
+            spotColor = Color.Black,
+        )
         .background(fillBrush, shape)
         .then(
             if (highlight) {

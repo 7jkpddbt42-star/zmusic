@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  图标前景：一块液态玻璃面板 + 应用同款手绘双音符。
+  面板 26..82（含圆角 19）最远点距中心约 31.7，落在自适应图标 66dp 安全圆内。
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- 玻璃面板填充：左上亮、右下略回光 -->
+    <path android:pathData="M45,26 L63,26 A19,19 0 0 1 82,45 L82,63 A19,19 0 0 1 63,82 L45,82 A19,19 0 0 1 26,63 L26,45 A19,19 0 0 1 45,26 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="26"
+                android:startY="26"
+                android:endX="82"
+                android:endY="82">
+                <item android:color="#4DFFFFFF" android:offset="0" />
+                <item android:color="#17FFFFFF" android:offset="0.55" />
+                <item android:color="#26FFFFFF" android:offset="1" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- 玻璃面板描边 -->
+    <path
+        android:pathData="M45,26 L63,26 A19,19 0 0 1 82,45 L82,63 A19,19 0 0 1 63,82 L45,82 A19,19 0 0 1 26,63 L26,45 A19,19 0 0 1 45,26 Z"
+        android:strokeColor="#8AFFFFFF"
+        android:strokeWidth="1.4" />
+
+    <!-- 玻璃高光：左上角一道柔和反光 -->
+    <path
+        android:pathData="M32,47 L44,35"
+        android:strokeColor="#24FFFFFF"
+        android:strokeWidth="6"
+        android:strokeLineCap="round" />
+
+    <!-- 手绘双音符（与界面内 MusicNote 线性图标同源） -->
+    <group
+        android:translateX="26.4"
+        android:translateY="26"
+        android:scaleX="2.3"
+        android:scaleY="2.3">
+        <path
+            android:pathData="M9.6,17 L9.6,6.4 M18.4,15.2 L18.4,4.6 M9.6,6.4 L18.4,4.6 M9.6,9.4 L18.4,7.6"
+            android:strokeColor="#FFFFFFFF"
+            android:strokeWidth="2"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+        <path
+            android:pathData="M7.6,17.4 m-2.4,0 a2.4,2.4 0 1,0 4.8,0 a2.4,2.4 0 1,0 -4.8,0"
+            android:fillColor="#FFFFFFFF" />
+        <path
+            android:pathData="M16.4,15.6 m-2.4,0 a2.4,2.4 0 1,0 4.8,0 a2.4,2.4 0 1,0 -4.8,0"
+            android:fillColor="#FFFFFFFF" />
+    </group>
+</vector>

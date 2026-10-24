@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import com.musicbox.app.data.ListeningStatsStore
 import com.musicbox.app.model.PlayMode
 import com.musicbox.app.model.Song
 import com.musicbox.app.player.SongUri
@@ -13,6 +14,7 @@ import com.musicbox.app.player.applyTo
 import com.musicbox.app.player.sharedSongStreamCache
 import com.musicbox.app.source.MusicProvider
 import com.musicbox.app.ui.toUserMessage
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -21,10 +23,26 @@ import kotlinx.coroutines.launch
 class PlayerViewModel(
     private val provider: MusicProvider,
     private val connection: PlaybackConnection,
+    private val listeningStats: ListeningStatsStore,
 ) : ViewModel() {
 
     val state: StateFlow<PlaybackUiState> = connection.state
     val mode: StateFlow<PlayMode> = connection.playMode
+
+    init {
+        // 播放中每秒累计一次本机收听时长，用于「我的」页统计
+        viewModelScope.launch {
+            while (true) {
+                delay(1_000)
+                if (connection.state.value.isPlaying) listeningStats.addSeconds(1)
+            }
+        }
+    }
+
+    override fun onCleared() {
+        listeningStats.flush()
+        super.onCleared()
+    }
 
     /** 一次性提示（播放失败、模式切换等），由 UI 消费后清空。 */
     private val _message = MutableStateFlow<String?>(null)

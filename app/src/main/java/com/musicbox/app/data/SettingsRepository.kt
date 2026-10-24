@@ -8,6 +8,21 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 
+/**
+ * 歌词页视觉样式。
+ * [Focus]：当前行居中大字高亮、其余行缩小淡出（默认，参考主流播放器）；
+ * [Classic]：统一字号列表、当前行仅描色。
+ */
+enum class LyricStyle(val key: String) {
+    Focus("focus"),
+    Classic("classic");
+
+    companion object {
+        fun fromKey(value: String?): LyricStyle =
+            values().firstOrNull { it.key == value } ?: Focus
+    }
+}
+
 /** 用户偏好。译文/罗马音默认开关在 MI-3 是内存态，本里程碑起持久化。 */
 class SettingsRepository(private val store: KeyValueStore) {
 
@@ -16,6 +31,14 @@ class SettingsRepository(private val store: KeyValueStore) {
 
     private val _showRomaji = MutableStateFlow(store.getBoolean(KEY_ROMAJI, false))
     val showRomaji: StateFlow<Boolean> = _showRomaji.asStateFlow()
+
+    private val _lyricStyle =
+        MutableStateFlow(LyricStyle.fromKey(store.getString(KEY_LYRIC_STYLE)))
+    val lyricStyle: StateFlow<LyricStyle> = _lyricStyle.asStateFlow()
+
+    private val _playerStyle =
+        MutableStateFlow(PlayerStyle.fromKey(store.getString(KEY_PLAYER_STYLE)))
+    val playerStyle: StateFlow<PlayerStyle> = _playerStyle.asStateFlow()
 
     private val _fallbackBaseUrl = MutableStateFlow(store.getString(KEY_FALLBACK_URL).orEmpty())
     val fallbackBaseUrl: StateFlow<String> = _fallbackBaseUrl.asStateFlow()
@@ -27,6 +50,10 @@ class SettingsRepository(private val store: KeyValueStore) {
     /** 播放页背景偏好整包暴露：类型 + 私有目录素材路径。 */
     private val _backgroundSpec = MutableStateFlow(readBackgroundSpec())
     val backgroundSpec: StateFlow<BackgroundSpec> = _backgroundSpec.asStateFlow()
+
+    private val _backgroundBlur =
+        MutableStateFlow(BackgroundBlur.fromKey(store.getString(KEY_BACKGROUND_BLUR)))
+    val backgroundBlur: StateFlow<BackgroundBlur> = _backgroundBlur.asStateFlow()
 
     private val _desktopLyricEnabled =
         MutableStateFlow(store.getBoolean(KEY_DESKTOP_LYRIC_ENABLED, false))
@@ -49,6 +76,16 @@ class SettingsRepository(private val store: KeyValueStore) {
     fun setShowRomaji(value: Boolean) {
         store.putBoolean(KEY_ROMAJI, value)
         _showRomaji.value = value
+    }
+
+    fun setLyricStyle(value: LyricStyle) {
+        store.putString(KEY_LYRIC_STYLE, value.key)
+        _lyricStyle.value = value
+    }
+
+    fun setPlayerStyle(value: PlayerStyle) {
+        store.putString(KEY_PLAYER_STYLE, value.key)
+        _playerStyle.value = value
     }
 
     fun setFallbackBaseUrl(value: String) {
@@ -106,6 +143,11 @@ class SettingsRepository(private val store: KeyValueStore) {
         _backgroundSpec.value = BackgroundSpec.COVER
     }
 
+    fun setBackgroundBlur(value: BackgroundBlur) {
+        store.putString(KEY_BACKGROUND_BLUR, value.key)
+        _backgroundBlur.value = value
+    }
+
     fun setDesktopLyricEnabled(value: Boolean) {
         store.putBoolean(KEY_DESKTOP_LYRIC_ENABLED, value)
         _desktopLyricEnabled.value = value
@@ -148,6 +190,8 @@ class SettingsRepository(private val store: KeyValueStore) {
     private companion object {
         const val KEY_TRANSLATION = "show_translation"
         const val KEY_ROMAJI = "show_romaji"
+        const val KEY_LYRIC_STYLE = "lyric_style"
+        const val KEY_PLAYER_STYLE = "player_style"
         const val KEY_FALLBACK_URL = "fallback_base_url"
         const val KEY_THEME_MODE = "theme_mode"
         const val KEY_SEED_SOURCE = "seed_source"
@@ -157,6 +201,7 @@ class SettingsRepository(private val store: KeyValueStore) {
         const val KEY_PLAYER_FIXED_SEED = "player_fixed_seed_argb"
         const val KEY_BACKGROUND_TYPE = "background_type"
         const val KEY_BACKGROUND_PATH = "background_path"
+        const val KEY_BACKGROUND_BLUR = "background_blur"
         const val KEY_DESKTOP_LYRIC_ENABLED = "desktop_lyric_enabled"
         const val KEY_DESKTOP_LYRIC_FONT_SP = "desktop_lyric_font_sp"
         const val KEY_DESKTOP_LYRIC_COLOR = "desktop_lyric_color_argb"

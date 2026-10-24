@@ -63,6 +63,46 @@ class NetEaseLoginApiTest {
     }
 
     @Test
+    fun `fetchAccount maps profile userId and nickname`() = runBlocking {
+        val body = """{"code":200,"profile":{"userId":9527,"nickname":"阿怪"}}"""
+        val t = RecordingTransport(TransportResponse(200, body))
+
+        val profile = NetEaseLoginApi(t, "D").fetchAccount("MU", "CSRF").getOrThrow()
+
+        assertEquals(AccountProfile(9527L, "阿怪"), profile)
+        assertEquals(
+            "https://interfacepc.music.163.com/eapi/nuser/account/get",
+            t.lastUrl,
+        )
+    }
+
+    @Test
+    fun `fetchAccount returns null profile for guest`() = runBlocking {
+        val body = """{"code":200,"account":null,"profile":null}"""
+        val t = RecordingTransport(TransportResponse(200, body))
+        assertEquals(null, NetEaseLoginApi(t, "D").fetchAccount("MU", "CSRF").getOrThrow())
+    }
+
+    @Test
+    fun `fetchUserDetail maps avatar and listenSongs`() = runBlocking {
+        val body = """{"code":200,"listenSongs":1234,"profile":{"userId":9527,"nickname":"阿怪","avatarUrl":"https://cdn/avatar.jpg"}}"""
+        val t = RecordingTransport(TransportResponse(200, body))
+
+        val detail = NetEaseLoginApi(t, "D").fetchUserDetail(9527L, "MU", "CSRF").getOrThrow()
+
+        assertEquals(
+            AccountProfile(
+                userId = 9527L,
+                nickname = "阿怪",
+                avatarUrl = "https://cdn/avatar.jpg",
+                listenSongs = 1234,
+            ),
+            detail,
+        )
+        assertEquals("https://interfacepc.music.163.com/eapi/v1/user/detail/9527", t.lastUrl)
+    }
+
+    @Test
     fun `poll 803 extracts MUSIC_U and csrf from cookie string`() = runBlocking {
         val body = """{"code":803,"cookie":"MUSIC_U=MUSIC_TOKEN; __csrf=CSRF_TOKEN; NMTID=x"}"""
         val t = RecordingTransport(TransportResponse(200, body))
@@ -71,6 +111,23 @@ class NetEaseLoginApiTest {
 
         assertEquals(
             QrPollResult.Success(musicU = "MUSIC_TOKEN", csrf = "CSRF_TOKEN"),
+            result,
+        )
+    }
+
+    @Test
+    fun `poll 803 reads MUSIC_U from Set-Cookie headers`() = runBlocking {
+        val body = """{"code":803}"""
+        val cookies = listOf(
+            "MUSIC_U=HEADER_TOKEN; Max-Age=1296000; Path=/; Domain=.music.163.com; HTTPOnly",
+            "__csrf=HEADER_CSRF; Max-Age=1296000; Path=/",
+        )
+        val t = RecordingTransport(TransportResponse(200, body, cookies))
+
+        val result = NetEaseLoginApi(t, "D").poll("k").getOrThrow()
+
+        assertEquals(
+            QrPollResult.Success(musicU = "HEADER_TOKEN", csrf = "HEADER_CSRF"),
             result,
         )
     }

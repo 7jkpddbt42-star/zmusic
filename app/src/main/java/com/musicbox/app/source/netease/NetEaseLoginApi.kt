@@ -2,6 +2,7 @@ package com.musicbox.app.source.netease
 
 import com.google.gson.Gson
 import com.google.gson.JsonSyntaxException
+import com.musicbox.app.data.AppLog
 import com.musicbox.app.source.SourceError
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -20,6 +21,15 @@ sealed interface QrPollResult {
     data class Success(val musicU: String, val csrf: String) : QrPollResult
 }
 
+/** 账号基础信息。uid 用于拉取"我的歌单"等个人内容。 */
+data class AccountProfile(
+    val userId: Long,
+    val nickname: String?,
+    val avatarUrl: String? = null,
+    /** 累计听歌曲数（user/detail 的 listenSongs），0 表示未知。 */
+    val listenSongs: Int = 0,
+)
+
 /**
  * 抽出来是为了让登录状态机可单测。
  *
@@ -29,7 +39,11 @@ sealed interface QrPollResult {
 interface LoginApi {
     suspend fun createQrKey(): Result<String>
     suspend fun poll(unikey: String): Result<QrPollResult>
-    suspend fun fetchNickname(musicU: String, csrf: String): Result<String?>
+    suspend fun fetchAccount(musicU: String, csrf: String): Result<AccountProfile?>
+
+    /** 用户详情（头像 / 累计听歌）。默认空实现，测试替身不必实现。 */
+    suspend fun fetchUserDetail(uid: Long, musicU: String, csrf: String): Result<AccountProfile?> =
+        Result.success(null)
 }
 
 /**
@@ -39,15 +53,16 @@ interface LoginApi {
 class NetEaseLoginApi(
     private val transport: HttpTransport,
     private val deviceId: String,
+    private val appLog: AppLog? = null,
     private val gson: Gson = Gson(),
 ) : LoginApi {
 
     /** 取二维码 key。二维码内容用 `https://music.163.com/login?codekey=<unikey>`。 */
     override suspend fun createQrKey(): Result<String> = call(
         uri = UNIKEY_URI,
-        payload = linkedMapOf<String, Any>("type" to 1, "e_r" to false, "header" to NetEaseHeader.build(deviceId)),
-    ) { body ->
-        val dto = gson.fromJson(body, QrUnikeyRespDto::class.java)
+        payload = linkedMapOf<String, Any>("type" to 3, "e_r" to false, "header" to NetEaseHeader.build(deviceId)),
+    ) { response ->
+        val dto = gson.fromJson(response.body, QrUnikeyRespDto::class.java)
         val key = dto?.unikey
         if (dto?.code != 200 || key.isNullOrBlank()) {
             throw SourceError.Api(dto?.code ?: -1, null)
@@ -56,37 +71,87 @@ class NetEaseLoginApi(
     }
 
     /** 轮询扫码状态。调用方每 2 秒轮一次。 */
-    override suspend fun poll(unikey: String): Result<QrPollResult> = call(
-        uri = POLL_URI,
-        payload = linkedMapOf<String, Any>(
+    override suspend fun poll(unikey: String): Result<QrPollResult> {
+        val payload = linkedMapOf<String, Any>(
             "key" to unikey,
-            "type" to 1,
+            // 必须与取 unikey 时一致；3 是端上扫码登录的客户端类型，803 才会下发 cookie。
+            "type" to 3,
             "e_r" to false,
             "header" to NetEaseHeader.build(deviceId),
-        ),
-    ) { body ->
-        val dto = gson.fromJson(body, QrPollRespDto::class.java)
-        when (dto?.code) {
+        )
+        val first = call(uri = POLL_URI, payload = payload, baseUrl = EAPI_BASE, bodyMapper = ::mapPollBody)
+        val error = first.exceptionOrNull()
+        // interfacepc 不下发 Set-Cookie 时，换标准 eapi 域名再取一次凭证。
+        if (error is SourceError.Parse && error.message == MISSING_CREDENTIAL) {
+            return call(
+                uri = POLL_URI,
+                payload = payload,
+                baseUrl = FALLBACK_EAPI_BASE,
+                bodyMapper = ::mapPollBody,
+            )
+        }
+        return first
+    }
+
+    private fun mapPollBody(response: TransportResponse): QrPollResult {
+        val dto = gson.fromJson(response.body, QrPollRespDto::class.java)
+        return when (dto?.code) {
             801 -> QrPollResult.Waiting
             800 -> QrPollResult.Expired
             802 -> QrPollResult.Scanned
             803 -> {
-                val cookie = parseCookieString(dto.cookie.orEmpty())
+                // 凭证位置随接口实现不同：weapi 放 JSON 的 cookie 字段，
+                // eapi 走 Set-Cookie 响应头，两处都取一遍。
+                val bodyCookies = parseCookieString(dto.cookie.orEmpty())
+                val headerCookies = response.setCookies.fold(emptyMap<String, String>()) { acc, raw ->
+                    acc + parseCookieString(raw)
+                }
+                val cookie = bodyCookies + headerCookies
                 val musicU = cookie["MUSIC_U"]
-                    ?: throw SourceError.Parse("登录成功但响应缺少 MUSIC_U", null)
+                if (musicU.isNullOrBlank()) {
+                    appLog?.log(
+                        "login",
+                        "803 未取到 MUSIC_U：body=${bodyCookies.keys}，" +
+                            "set-cookie=${response.setCookies.map { it.substringBefore('=') }}",
+                    )
+                    throw SourceError.Parse(MISSING_CREDENTIAL, null)
+                }
                 QrPollResult.Success(musicU = musicU, csrf = cookie["__csrf"].orEmpty())
             }
             else -> throw SourceError.Api(dto?.code ?: -1, null)
         }
     }
 
-    /** 取昵称（可选增强）。失败不影响登录态。 */
-    override suspend fun fetchNickname(musicU: String, csrf: String): Result<String?> = call(
+    /** 取账号信息（昵称 + uid + 头像，可选增强）。失败不影响登录态。 */
+    override suspend fun fetchAccount(musicU: String, csrf: String): Result<AccountProfile?> = call(
         uri = ACCOUNT_URI,
         payload = linkedMapOf<String, Any>("e_r" to false, "header" to NetEaseHeader.build(deviceId, csrf)),
         musicU = musicU,
-    ) { body ->
-        gson.fromJson(body, AccountRespDto::class.java)?.profile?.nickname
+    ) { response ->
+        val profile = gson.fromJson(response.body, AccountRespDto::class.java)?.profile
+        profile?.takeIf { it.userId > 0 }?.let {
+            AccountProfile(it.userId, it.nickname, it.avatarUrl)
+        }
+    }
+
+    /** 用户详情：补全头像与累计听歌曲数。响应缺字段时按缺省值返回。 */
+    override suspend fun fetchUserDetail(
+        uid: Long,
+        musicU: String,
+        csrf: String,
+    ): Result<AccountProfile?> = call(
+        uri = "/api/v1/user/detail/$uid",
+        payload = linkedMapOf<String, Any>("e_r" to false, "header" to NetEaseHeader.build(deviceId, csrf)),
+        musicU = musicU,
+    ) { response ->
+        val dto = gson.fromJson(response.body, UserDetailRespDto::class.java)
+        if (dto?.code != 200) throw SourceError.Api(dto?.code ?: -1, null)
+        AccountProfile(
+            userId = dto.profile?.userId?.takeIf { it > 0 } ?: uid,
+            nickname = dto.profile?.nickname,
+            avatarUrl = dto.profile?.avatarUrl,
+            listenSongs = dto.listenSongs,
+        )
     }
 
     /** 统一封装：构造 header → 签名 → post → 解析。bodyMapper 里抛 SourceError 即失败。 */
@@ -94,7 +159,8 @@ class NetEaseLoginApi(
         uri: String,
         payload: Map<String, Any>,
         musicU: String? = null,
-        bodyMapper: (String) -> T,
+        baseUrl: String = EAPI_BASE,
+        bodyMapper: (TransportResponse) -> T,
     ): Result<T> = withContext(Dispatchers.IO) {
         try {
             val header = payload["header"] as Map<String, String>
@@ -106,19 +172,29 @@ class NetEaseLoginApi(
                 "Referer" to "https://music.163.com",
             )
             // uri 形如 /api/login/qrcode/unikey → /eapi/login/qrcode/unikey
-            val response = transport.post(EAPI_BASE + uri.replaceFirst("/api", "/eapi"), body, headers)
-            Result.success(bodyMapper(response.body))
+            val response = transport.post(baseUrl + uri.replaceFirst("/api", "/eapi"), body, headers)
+            Result.success(bodyMapper(response))
         } catch (e: SourceError) {
+            appLog?.log("login", "$uri 失败", e)
             Result.failure(e)
         } catch (e: JsonSyntaxException) {
+            appLog?.log("login", "$uri 响应解析失败", e)
             Result.failure(SourceError.Parse("响应不是合法 JSON", e))
         } catch (e: IOException) {
+            appLog?.log("login", "$uri 网络异常", e)
             Result.failure(SourceError.Network(e))
         }
     }
 
     private companion object {
         const val EAPI_BASE = "https://interfacepc.music.163.com"
+
+        /** 备用 eapi 域名：interfacepc 未返回登录 cookie 时回退到这里再取一次。 */
+        const val FALLBACK_EAPI_BASE = "https://music.163.com"
+
+        /** 803 但 JSON / Set-Cookie 都没有 MUSIC_U。 */
+        const val MISSING_CREDENTIAL = "登录成功但未取到登录凭证，请重试"
+
         const val UNIKEY_URI = "/api/login/qrcode/unikey"
         const val POLL_URI = "/api/login/qrcode/client/login"
         const val ACCOUNT_URI = "/api/nuser/account/get"
