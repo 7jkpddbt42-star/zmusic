@@ -2,6 +2,7 @@ package com.musicbox.app.ui.player
 
 import android.content.ComponentName
 import android.content.Context
+import androidx.core.content.ContextCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -111,7 +112,8 @@ class PlaybackConnection(private val context: Context) : PositionSource {
                 refresh(controller)
                 startTicker(controller)
             },
-            { runnable -> context.mainExecutor.execute(runnable) },
+            // Context.mainExecutor 需要 API 28，minSdk 是 26，用兼容入口避免低版本崩溃
+            { runnable -> ContextCompat.getMainExecutor(context).execute(runnable) },
         )
     }
 
