@@ -36,6 +36,9 @@ class SongStreamCache(
 
     fun size(): Int = synchronized(entries) { entries.size }
 
+    /** 登录态切换后必须清空：游客态取到的试听地址对登录账号不再适用。 */
+    fun clear() = synchronized(entries) { entries.clear() }
+
     companion object {
         const val DEFAULT_TTL_MS = 10 * 60 * 1000L
     }

@@ -3,7 +3,6 @@ package com.musicbox.app.ui.home
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -12,7 +11,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
@@ -27,7 +25,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.musicbox.app.ui.components.GlassBackButton
 import com.musicbox.app.ui.components.GlassEmptyState
-import com.musicbox.app.ui.components.GlassPanel
+import com.musicbox.app.ui.components.GlassListPanel
 import com.musicbox.app.ui.components.GlassPill
 import com.musicbox.app.ui.components.MusicIcons
 import com.musicbox.app.ui.library.SongRow
@@ -147,30 +145,25 @@ fun PlaylistDetailScreen(
             }
 
             else -> {
-                GlassPanel(
+                GlassListPanel(
                     modifier = Modifier.fillMaxSize().padding(bottom = 8.dp),
                     shape = RoundedCornerShape(26.dp),
                 ) {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
-                        verticalArrangement = Arrangement.spacedBy(2.dp),
-                    ) {
-                        itemsIndexed(state.songs, key = { _, song -> song.id }) { index, song ->
-                            SongRow(
-                                song = song,
-                                isCurrent = song.id == nowPlayingSongId,
-                                onClick = { onSongClick(index) },
-                                trailing = {
-                                    Text(
-                                        text = formatTime(song.durationMs),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                                        modifier = Modifier.padding(horizontal = 8.dp),
-                                    )
-                                },
-                            )
-                        }
+                    // key 带索引：万一同名歌单里出现重复曲目 id，也不会因为重复 key 崩溃
+                    itemsIndexed(state.songs, key = { index, song -> "$index-${song.id}" }) { index, song ->
+                        SongRow(
+                            song = song,
+                            isCurrent = song.id == nowPlayingSongId,
+                            onClick = { onSongClick(index) },
+                            trailing = {
+                                Text(
+                                    text = formatTime(song.durationMs),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                    modifier = Modifier.padding(horizontal = 8.dp),
+                                )
+                            },
+                        )
                     }
                 }
             }

@@ -71,6 +71,7 @@ import com.musicbox.app.data.BackgroundSpec
 import com.musicbox.app.data.BackgroundType
 import com.musicbox.app.data.PlayerStyle
 import com.musicbox.app.desktoplyric.DesktopLyricService
+import com.musicbox.app.player.sharedSongStreamCache
 import com.musicbox.app.ui.BottomTabs
 import com.musicbox.app.ui.LocalPageSeed
 import com.musicbox.app.ui.MainTab
@@ -95,6 +96,7 @@ import com.musicbox.app.ui.lyric.LyricViewModel
 import com.musicbox.app.ui.mine.MineScreen
 import com.musicbox.app.ui.player.NowPlayingBar
 import com.musicbox.app.ui.player.PlaybackConnection
+import com.musicbox.app.ui.player.PlaybackUiState
 import com.musicbox.app.ui.player.PlayerScreen
 import com.musicbox.app.ui.player.PlayerViewModel
 import com.musicbox.app.ui.player.QueueSheet
@@ -107,6 +109,8 @@ import com.musicbox.app.ui.theme.ThemeSpec
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 /** 按来源解析当前生效的主题 seed。壁纸取色在低版本/取色失败时返回 null。 */
@@ -225,11 +229,21 @@ private fun MusicBoxApp(
     )
 
     val searchState by searchVm.state.collectAsStateWithLifecycle()
-    val playState by playerVm.state.collectAsStateWithLifecycle()
+    // 位置每 250ms 变化一次，但页面结构（歌曲/标题/播放态/队列）不需要跟着重组。
+    // 顶层只订阅去掉位置的结构态；播放页内部再单独订阅完整状态，
+    // 避免主界面每秒被 4 次位置刷新带着重组。
+    val playState by remember(playerVm) {
+        playerVm.state
+            .map { state -> if (state.positionMs == 0L) state else state.copy(positionMs = 0L) }
+            .distinctUntilChanged()
+    }.collectAsStateWithLifecycle(initialValue = PlaybackUiState())
     val mode by playerVm.mode.collectAsStateWithLifecycle()
     val message by playerVm.message.collectAsStateWithLifecycle()
     val lyricState by lyricVm.state.collectAsStateWithLifecycle()
     val currentLineText by lyricVm.currentLineText.collectAsStateWithLifecycle()
+    // 播放页歌词预览：原文与译文分两排，迷你条继续用拼接后的 currentLineText
+    val currentLineOriginal by lyricVm.currentLineOriginal.collectAsStateWithLifecycle()
+    val currentLineTranslation by lyricVm.currentLineTranslation.collectAsStateWithLifecycle()
     val homeState by homeVm.state.collectAsStateWithLifecycle()
     val homeDetail by homeVm.detail.collectAsStateWithLifecycle()
     val fmSongs by homeVm.fmSongs.collectAsStateWithLifecycle()
@@ -240,6 +254,7 @@ private fun MusicBoxApp(
     val lyricStylePref by container.settings.lyricStyle.collectAsStateWithLifecycle()
     val playerStylePref by container.settings.playerStyle.collectAsStateWithLifecycle()
     val fallbackUrl by container.settings.fallbackBaseUrl.collectAsStateWithLifecycle()
+    val freeSourceEnabled by container.settings.freeSourceEnabled.collectAsStateWithLifecycle()
     val desktopLyricEnabled by container.settings.desktopLyricEnabled.collectAsStateWithLifecycle()
     val desktopLyricFontSp by container.settings.desktopLyricFontSp.collectAsStateWithLifecycle()
     val desktopLyricColorArgb by container.settings.desktopLyricColorArgb.collectAsStateWithLifecycle()
@@ -348,9 +363,12 @@ private fun MusicBoxApp(
     LaunchedEffect(playState.currentSongId) {
         lyricVm.load(playState.currentSongId)
     }
-    // 用已有的 250ms 播放位置驱动迷你条当前行文本（不额外引入逐帧时钟）
-    LaunchedEffect(playState.positionMs, lyricState, showTranslationPref) {
-        lyricVm.updatePosition(playState.positionMs)
+    // 歌词当前行跟随播放位置刷新：直接向连接层采样，不把 250ms 位置写回结构态
+    LaunchedEffect(lyricState, showTranslationPref) {
+        while (true) {
+            lyricVm.updatePosition(connection.positionMs())
+            delay(250)
+        }
     }
     // 有歌 / 播没播 变化 → 刷新桌面歌词悬浮窗的可见性与播放态（行级，与位置解耦）
     LaunchedEffect(playState.hasCurrent, playState.isPlaying) {
@@ -445,6 +463,7 @@ private fun MusicBoxApp(
                             MainTab.HOME -> HomeScreen(
                                 state = homeState,
                                 session = session,
+                                history = history.map { it.song },
                                 fmLoading = fmLoading,
                                 nowPlayingSongId = playState.currentSongId,
                                 onLogin = { showLogin = true },
@@ -452,6 +471,7 @@ private fun MusicBoxApp(
                                 onPlayFm = homeVm::playFm,
                                 onOpenTarget = homeVm::openDetail,
                                 onOpenPlaylists = { showPlaylists = true },
+                                onOpenHistory = { showHistory = true },
                                 onPlayList = { songs, index ->
                                     playerVm.play(songs, index)
                                     songs.getOrNull(index)?.let(libraryVm::recordPlayed)
@@ -462,6 +482,7 @@ private fun MusicBoxApp(
                                 state = searchState,
                                 onQueryChange = searchVm::onQueryChange,
                                 onSearch = searchVm::search,
+                                onQuickSearch = searchVm::quickSearch,
                                 nowPlayingSongId = playState.currentSongId,
                                 onSongClick = { index ->
                                     playerVm.play(searchState.results, index)
@@ -474,18 +495,16 @@ private fun MusicBoxApp(
                                 history = history.map { it.song },
                                 liked = homeState.liked,
                                 playlists = homeState.playlists,
-                                nowPlayingSongId = playState.currentSongId,
                                 listeningSeconds = listeningSeconds,
                                 onLogin = { showLogin = true },
-                                onLogout = { container.sessionStore.clear() },
+                                onLogout = {
+                                    container.sessionStore.clear()
+                                    sharedSongStreamCache.clear()
+                                },
                                 onOpenSettings = { showSettings = true },
                                 onOpenHistory = { showHistory = true },
                                 onOpenTarget = homeVm::openDetail,
                                 onOpenPlaylists = { showPlaylists = true },
-                                onSongClick = { songs, index ->
-                                    playerVm.play(songs, index)
-                                    songs.getOrNull(index)?.let(libraryVm::recordPlayed)
-                                },
                                 modifier = Modifier,
                             )
                         }
@@ -653,6 +672,9 @@ private fun MusicBoxApp(
                 enter = fadeIn(tween(320)),
                 exit = fadeOut(tween(260)),
             ) {
+                // 完整播放状态（含 250ms 位置）只在播放页可见时订阅：
+                // 关闭时自动取消，主界面不会被位置刷新牵连重组。
+                val playerState by playerVm.state.collectAsStateWithLifecycle()
                 // 不透明底色：播放页 ↔ 歌词页交叉淡化时不会透出下面的主界面
                 Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
                     // 播放页与歌词页互斥，切换时淡入淡出（不做横向滑动）
@@ -662,12 +684,13 @@ private fun MusicBoxApp(
                         exit = fadeOut(tween(240)),
                     ) {
                         PlayerScreen(
-                            state = playState,
+                            state = playerState,
                             source = connection,
                             background = backgroundSpec,
                             modeLabel = mode.label,
-                            isLiked = playState.currentSongId?.let { it in likedSongIds } == true,
-                            lyricLine = currentLineText,
+                            isLiked = playerState.currentSongId?.let { it in likedSongIds } == true,
+                            lyricLine = currentLineOriginal,
+                            lyricTranslation = currentLineTranslation,
                             playerStyle = playerStylePref,
                             actions = playerActions,
                         )
@@ -752,6 +775,7 @@ private fun MusicBoxApp(
             lyricStyle = lyricStylePref,
             playerStyle = playerStylePref,
             fallbackBaseUrl = fallbackUrl,
+            freeSourceEnabled = freeSourceEnabled,
             lyricCacheCount = container.lyricDiskCache.size(),
             themeSpec = spec,
             background = backgroundSpec,
@@ -765,6 +789,17 @@ private fun MusicBoxApp(
             onLyricStyle = container.settings::setLyricStyle,
             onPlayerStyle = container.settings::setPlayerStyle,
             onSaveFallbackUrl = container.settings::setFallbackBaseUrl,
+            onFreeSourceEnabled = { enabled ->
+                container.settings.setFreeSourceEnabled(enabled)
+                // 旧地址是按旧模式取的：清空后当前歌立刻按新模式重新取流（进度保留）
+                sharedSongStreamCache.clear()
+                playerVm.reloadCurrentStream()
+                scope.launch {
+                    snackbarHostState.showSnackbar(
+                        if (enabled) "已开启免费听歌模式，正在重新取流" else "已切换回普通模式",
+                    )
+                }
+            },
             onClearLyricCache = {
                 container.lyricDiskCache.clear()
                 showSettings = false

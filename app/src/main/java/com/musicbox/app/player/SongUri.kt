@@ -1,5 +1,7 @@
 package com.musicbox.app.player
 
+import java.net.URLEncoder
+
 /**
  * 队列里每首 MediaItem 的占位 URI 编解码。
  *
@@ -13,7 +15,14 @@ object SongUri {
     private const val SCHEME = "musicbox"
     private const val HOST = "song"
 
-    fun placeholder(songId: Long): String = "$SCHEME://$HOST/$songId"
+    /**
+     * @param nonce 可选随机串：切换音源模式后用它构造一条新的占位 URI，
+     *              强制 ExoPlayer 重建媒体源、按新模式重新取流。
+     */
+    fun placeholder(songId: Long, nonce: String? = null): String {
+        val base = "$SCHEME://$HOST/$songId"
+        return if (nonce == null) base else base + "?n=" + enc(nonce)
+    }
 
     /** 占位 URI → songId；不是占位 URI（例如已经是 http 地址）时返回 null。 */
     fun songIdOf(uri: String): Long? {
@@ -21,4 +30,6 @@ object SongUri {
         if (!uri.startsWith(prefix)) return null
         return uri.removePrefix(prefix).substringBefore('?').toLongOrNull()
     }
+
+    private fun enc(value: String): String = URLEncoder.encode(value, "UTF-8")
 }

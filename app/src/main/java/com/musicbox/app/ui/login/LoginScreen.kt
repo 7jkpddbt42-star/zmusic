@@ -79,7 +79,7 @@ fun LoginScreen(
         ) {
             Text("扫码登录网易云", style = MaterialTheme.typography.titleLarge)
             Text(
-                text = "登录后可解锁完整播放与更高音质；不登录也能正常搜索与试听。",
+                text = "登录后可同步歌单、喜欢与每日推荐；会员歌曲仍需网易云会员权限。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 8.dp, bottom = 24.dp),

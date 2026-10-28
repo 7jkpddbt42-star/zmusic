@@ -53,6 +53,7 @@ fun LiquidGlassPlayerStyle(
     lyricLine: String,
     actions: PlayerActions,
     modifier: Modifier = Modifier,
+    lyricTranslation: String = "",
 ) {
     val backdrop = rememberPlayerGlassBackdrop()
     // 底部控制条玻璃的导出层：播放键采样它实现玻璃叠玻璃。
@@ -140,6 +141,7 @@ fun LiquidGlassPlayerStyle(
                                 lyricLine = lyricLine,
                                 onClick = actions.onOpenLyric,
                                 foreground = Color.White,
+                                translation = lyricTranslation,
                             )
                         }
                     }

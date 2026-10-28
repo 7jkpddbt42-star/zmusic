@@ -34,8 +34,8 @@ import com.musicbox.app.ui.theme.rememberArtworkBitmap
 /** 唱片每秒旋转的角度（约 18 秒一圈）。 */
 private const val ROTATION_DEG_PER_SEC = 20f
 
-/** 中心封面占盘体直径的比例。 */
-private const val COVER_DIAMETER_FRACTION = 0.62f
+/** 中心封面占盘体直径的比例：贴片越大、外圈黑边越窄，观感更精致。 */
+private const val COVER_DIAMETER_FRACTION = 0.72f
 
 /**
  * 旋转黑胶唱片。
@@ -99,9 +99,10 @@ fun VinylRecord(
                 radius = radius,
                 center = center,
             )
-            var groove = radius * 0.30f
-            val step = radius * 0.035f
-            while (groove < radius * 0.96f) {
+            // 纹路从贴片边缘外一点点开始，避免压到封面
+            var groove = radius * COVER_DIAMETER_FRACTION + radius * 0.02f
+            val step = radius * 0.028f
+            while (groove < radius * 0.97f) {
                 drawCircle(
                     color = Color.White.copy(alpha = 0.045f),
                     radius = groove,
@@ -110,9 +111,34 @@ fun VinylRecord(
                 )
                 groove += step
             }
+            // 外圈倒角高光：左上亮、右下暗，盘片看起来有厚度而不像一块纯黑圆片
+            drawCircle(
+                brush = Brush.linearGradient(
+                    colors = listOf(Color.White.copy(alpha = 0.16f), Color.Transparent),
+                    start = Offset(size.width * 0.18f, size.height * 0.12f),
+                    end = Offset(size.width * 0.82f, size.height * 0.9f),
+                ),
+                radius = radius - 1.dp.toPx(),
+                center = center,
+                style = Stroke(width = 1.6.dp.toPx()),
+            )
+            // 极轻的斜向反光，旋转时会在盘面慢慢扫过（随盘体一起转，不额外驱动动画）
+            drawCircle(
+                brush = Brush.linearGradient(
+                    colors = listOf(
+                        Color.Transparent,
+                        Color.White.copy(alpha = 0.055f),
+                        Color.Transparent,
+                    ),
+                    start = Offset(0f, 0f),
+                    end = Offset(size.width, size.height),
+                ),
+                radius = radius,
+                center = center,
+            )
         }
 
-        // 中心封面：圆形裁剪，占盘体约 0.62 直径
+        // 中心封面：圆形裁剪，占盘体约 0.72 直径
         val cover = bitmap
         if (cover != null) {
             Image(

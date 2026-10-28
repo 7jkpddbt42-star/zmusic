@@ -23,6 +23,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -46,8 +47,6 @@ import com.musicbox.app.data.BackgroundSpec
 import com.musicbox.app.data.LyricStyle
 import com.musicbox.app.data.PlayerStyle
 import com.musicbox.app.ui.components.liquidglass.GlassAmbientBackdrop
-import com.musicbox.app.ui.components.liquidglass.GlassBackdrop
-import com.musicbox.app.ui.components.liquidglass.LiquidGlassPreviewContent
 import com.musicbox.app.ui.components.liquidglass.glassBackdropSource
 import com.musicbox.app.ui.components.liquidglass.liquidGlass
 import com.musicbox.app.ui.components.liquidglass.rememberGlassBackdrop
@@ -84,6 +83,7 @@ fun SettingsScreen(
     lyricStyle: LyricStyle,
     playerStyle: PlayerStyle,
     fallbackBaseUrl: String,
+    freeSourceEnabled: Boolean,
     lyricCacheCount: Int,
     themeSpec: ThemeSpec,
     background: BackgroundSpec,
@@ -97,6 +97,7 @@ fun SettingsScreen(
     onLyricStyle: (LyricStyle) -> Unit,
     onPlayerStyle: (PlayerStyle) -> Unit,
     onSaveFallbackUrl: (String) -> Unit,
+    onFreeSourceEnabled: (Boolean) -> Unit,
     onClearLyricCache: () -> Unit,
     onThemeMode: (ThemeMode) -> Unit,
     onSeedSource: (SeedSource) -> Unit,
@@ -134,16 +135,36 @@ fun SettingsScreen(
                 .fillMaxSize()
                 .glassBackdropSource(backdrop),
         )
-        // 内容层：每个分组包进一块玻璃卡片（采样真实背景，模糊与折射可见）
-        Column(
+        // 内容层：整页只用一块玻璃（背景层）+ 前景滚动列。
+        // 每个分组各挂一块玻璃时，滚动会同时重算 8 份全幅模糊/折射，模拟器上直接掉到几帧并触发 ANR。
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(16.dp)
                 .statusBarsPadding()
-                .navigationBarsPadding()
-                .verticalScroll(rememberScrollState()),
+                .navigationBarsPadding(),
         ) {
-            GlassSection(backdrop = backdrop) {
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .liquidGlass(
+                        backdrop = backdrop,
+                        shape = RoundedCornerShape(30.dp),
+                        blurRadius = 6.dp,
+                        tint = Color.White.copy(alpha = 0.08f),
+                        // 整页大面板上色散几乎不可见，却是逐像素多采样的大头，
+                        // 关掉后观感几乎不变、滚动明显更轻
+                        dispersion = false,
+                    ),
+            )
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(RoundedCornerShape(30.dp))
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 18.dp, vertical = 14.dp),
+            ) {
+            SettingsGroup {
                 Text("外观", style = MaterialTheme.typography.titleMedium)
 
                 Text(
@@ -236,9 +257,12 @@ fun SettingsScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            HorizontalDivider(
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f),
+                modifier = Modifier.padding(vertical = 12.dp),
+            )
 
-            GlassSection(backdrop = backdrop) {
+            SettingsGroup {
                 Text("液态玻璃", style = MaterialTheme.typography.titleMedium)
                 Text(
                     "基于官方库 Kyant0/Backdrop：折射主导、6dp 辅助模糊、8% 白色着色、边缘色散；" +
@@ -253,9 +277,12 @@ fun SettingsScreen(
                 ) { Text("打开纹理验收页") }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            HorizontalDivider(
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f),
+                modifier = Modifier.padding(vertical = 12.dp),
+            )
 
-            GlassSection(backdrop = backdrop) {
+            SettingsGroup {
                 Text("背景", style = MaterialTheme.typography.titleMedium)
                 Text(
                     "仅支持本机素材（相册中的图片或视频），不提供官方素材库 / 在线 MV；选中的素材会复制到应用内保存。",
@@ -298,9 +325,12 @@ fun SettingsScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            HorizontalDivider(
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f),
+                modifier = Modifier.padding(vertical = 12.dp),
+            )
 
-            GlassSection(backdrop = backdrop) {
+            SettingsGroup {
                 Text("歌词", style = MaterialTheme.typography.titleMedium)
 
                 Text(
@@ -332,9 +362,12 @@ fun SettingsScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            HorizontalDivider(
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f),
+                modifier = Modifier.padding(vertical = 12.dp),
+            )
 
-            GlassSection(backdrop = backdrop) {
+            SettingsGroup {
                 Text("播放页", style = MaterialTheme.typography.titleMedium)
                 Text(
                     "播放页风格",
@@ -366,9 +399,12 @@ fun SettingsScreen(
                 )
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            HorizontalDivider(
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f),
+                modifier = Modifier.padding(vertical = 12.dp),
+            )
 
-            GlassSection(backdrop = backdrop) {
+            SettingsGroup {
                 Text("桌面歌词", style = MaterialTheme.typography.titleMedium)
                 Text(
                     "在系统悬浮窗中显示当前歌词，可拖动到任意位置。首次开启需要授予「显示在其他应用上层」权限。",
@@ -406,9 +442,48 @@ fun SettingsScreen(
                 )
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            HorizontalDivider(
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f),
+                modifier = Modifier.padding(vertical = 12.dp),
+            )
 
-            GlassSection(backdrop = backdrop) {
+            SettingsGroup {
+                Text("音源", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "听歌模式",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(top = 12.dp),
+                )
+                Row(modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
+                    ChoiceChip("普通模式", !freeSourceEnabled) { onFreeSourceEnabled(false) }
+                    ChoiceChip("免费听歌模式", freeSourceEnabled) { onFreeSourceEnabled(true) }
+                }
+                Text(
+                    if (freeSourceEnabled) {
+                        "当前：免费听歌模式。官方只给试听片段时，会自动到公开的第三方接口换取完整地址" +
+                            "（音质通常 128kbps）；第三方地址并非官方授权，个别歌曲仍可能拿不到完整版。"
+                    } else {
+                        "当前：普通模式。只使用网易云官方音源，VIP / 付费歌曲仅提供试听片段。"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+                Text(
+                    "随时可切换，切换后当前歌曲会立即按新模式重新取流，进度会尽量保持；" +
+                        "若该曲在新模式下只有试听片段，超出部分无法继续。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            }
+
+            HorizontalDivider(
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f),
+                modifier = Modifier.padding(vertical = 12.dp),
+            )
+
+            SettingsGroup {
                 Text("备用音源地址", style = MaterialTheme.typography.titleMedium)
                 Text(
                     "默认留空。仅在端上签名路径临时失效时作为应急兜底，不参与正常流程。",
@@ -429,16 +504,22 @@ fun SettingsScreen(
                 ) { Text("保存地址") }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            HorizontalDivider(
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f),
+                modifier = Modifier.padding(vertical = 12.dp),
+            )
 
-            GlassSection(backdrop = backdrop) {
+            SettingsGroup {
                 Text("歌词缓存：$lyricCacheCount 首")
                 Button(onClick = onClearLyricCache, modifier = Modifier.padding(top = 8.dp)) { Text("清空歌词缓存") }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            HorizontalDivider(
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f),
+                modifier = Modifier.padding(vertical = 12.dp),
+            )
 
-            GlassSection(backdrop = backdrop) {
+            SettingsGroup {
                 Text("错误日志", style = MaterialTheme.typography.titleMedium)
                 Text(
                     "签名 / 解析异常等本地技术日志，仅用于排查，不影响使用。",
@@ -452,6 +533,7 @@ fun SettingsScreen(
             }
 
             TextButton(onClick = onBack, modifier = Modifier.padding(top = 24.dp)) { Text("返回") }
+            }
         }
     }
 
@@ -471,27 +553,15 @@ fun SettingsScreen(
 }
 
 /**
- * 设置页分组玻璃卡片：采样页面不透明底色的毛玻璃块（页面内容不穿卡片，视觉干净）。
- * 内边距 16dp，与旧分组内容的留白习惯一致。
+ * 设置页分组：整页共用外层那一块玻璃，分组本身只排内容，
+ * 不再各自挂 drawBackdrop（滚动时只有一块玻璃参与采样/折射）。
  */
 @Composable
-private fun GlassSection(
-    backdrop: GlassBackdrop,
+private fun SettingsGroup(
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .liquidGlass(
-                backdrop = backdrop,
-                shape = RoundedCornerShape(28.dp),
-                blurRadius = 6.dp,
-                tint = Color.White.copy(alpha = 0.08f),
-            )
-            .padding(16.dp),
-        content = content,
-    )
+    Column(modifier = modifier.fillMaxWidth(), content = content)
 }
 
 /** 单个可选项胶囊。选中高亮，禁用置灰。 */

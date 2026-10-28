@@ -3,16 +3,21 @@ package com.musicbox.app.ui.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
@@ -22,11 +27,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.musicbox.app.ui.components.liquidglass.LocalGlassBackdrop
 import com.musicbox.app.ui.components.liquidglass.liquidGlass
@@ -43,6 +50,7 @@ fun GlassPanel(
     modifier: Modifier = Modifier,
     shape: Shape = RoundedCornerShape(26.dp),
     tint: Color = Color.White.copy(alpha = 0.08f),
+    shadowElevation: Dp = 10.dp,
     content: @Composable BoxScope.() -> Unit,
 ) {
     Box(
@@ -51,9 +59,35 @@ fun GlassPanel(
             shape = shape,
             blurRadius = 6.dp,
             tint = tint,
+            shadowElevation = shadowElevation,
         ),
         content = content,
     )
+}
+
+/**
+ * 长列表专用玻璃容器：玻璃画在背景层，列表画在前景层。
+ *
+ * 列表滚动只重绘自身，不会让整块玻璃的模糊/折射每帧跟着重算；
+ * 若把 LazyColumn 直接塞进 GlassPanel，滚动时会持续触发背景采样，帧率会掉。
+ */
+@Composable
+fun GlassListPanel(
+    modifier: Modifier = Modifier,
+    shape: Shape = RoundedCornerShape(26.dp),
+    contentPadding: PaddingValues = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
+    verticalArrangement: Arrangement.Vertical = Arrangement.spacedBy(2.dp),
+    content: LazyListScope.() -> Unit,
+) {
+    Box(modifier = modifier) {
+        GlassPanel(modifier = Modifier.matchParentSize(), shape = shape) {}
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().clip(shape),
+            contentPadding = contentPadding,
+            verticalArrangement = verticalArrangement,
+            content = content,
+        )
+    }
 }
 
 /** 玻璃小胶囊按钮：用于页头动作（清空、登录、退出等）。 */
@@ -73,6 +107,8 @@ fun GlassPill(
                 blurRadius = 6.dp,
                 tint = tint,
                 interactionSource = interactionSource,
+                // 小胶囊不需要 10dp 的厚度，4dp 足够贴住背景又不显脏
+                shadowElevation = 4.dp,
             )
             .clickable(
                 interactionSource = interactionSource,

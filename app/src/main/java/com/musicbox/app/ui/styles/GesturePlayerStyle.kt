@@ -73,6 +73,7 @@ fun GesturePlayerStyle(
     lyricLine: String,
     actions: PlayerActions,
     modifier: Modifier = Modifier,
+    lyricTranslation: String = "",
 ) {
     val context = LocalContext.current
     val activity = remember(context) { context.findActivity() }
@@ -228,6 +229,7 @@ fun GesturePlayerStyle(
                             lyricLine = lyricLine,
                             onClick = actions.onOpenLyric,
                             foreground = Color.White,
+                            translation = lyricTranslation,
                         )
 
                         Spacer(modifier = Modifier.height(14.dp))
@@ -290,15 +292,6 @@ fun GesturePlayerStyle(
 
                         Spacer(modifier = Modifier.height(6.dp))
                     }
-                }
-
-                if (!controlsVisible) {
-                    Text(
-                        text = "轻触封面显示控制 · 上下滑动调亮度 / 音量",
-                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                        color = Color.White.copy(alpha = 0.42f),
-                        modifier = Modifier.padding(bottom = 10.dp),
-                    )
                 }
             }
 

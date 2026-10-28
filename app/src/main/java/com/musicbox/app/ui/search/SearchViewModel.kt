@@ -35,6 +35,12 @@ class SearchViewModel(
         _state.update { it.copy(query = value) }
     }
 
+    /** 热门关键词直接起搜：先写入输入框，再走同一套搜索逻辑。 */
+    fun quickSearch(keyword: String) {
+        _state.update { it.copy(query = keyword) }
+        search()
+    }
+
     fun search() {
         val keyword = _state.value.query.trim()
         if (keyword.isEmpty()) return

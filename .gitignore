@@ -1,5 +1,6 @@
 *.iml
 .gradle
+.kotlin
 /local.properties
 /.idea
 .DS_Store
@@ -10,3 +11,5 @@
 local.properties
 app/build
 /dist
+/keystore
+/keystore.properties

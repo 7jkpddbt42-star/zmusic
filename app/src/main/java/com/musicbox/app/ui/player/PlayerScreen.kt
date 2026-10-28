@@ -40,6 +40,7 @@ internal fun PlayerScreen(
     modeLabel: String,
     isLiked: Boolean,
     lyricLine: String,
+    lyricTranslation: String,
     playerStyle: PlayerStyle,
     actions: PlayerActions,
     modifier: Modifier = Modifier,
@@ -67,9 +68,11 @@ internal fun PlayerScreen(
         when (style) {
             PlayerStyle.MINIMAL -> MinimalPlayerStyle(
                 state, source, background, modeLabel, isLiked, lyricLine, styledActions, styleModifier,
+                lyricTranslation,
             )
             PlayerStyle.LIQUID_GLASS -> LiquidGlassPlayerStyle(
                 state, source, background, modeLabel, isLiked, lyricLine, styledActions, styleModifier,
+                lyricTranslation,
             )
             PlayerStyle.STRUCTURED -> StructuredPlayerStyle(
                 state, source, background, modeLabel, isLiked, lyricLine, styledActions, styleModifier,
@@ -79,6 +82,7 @@ internal fun PlayerScreen(
             )
             PlayerStyle.GESTURE -> GesturePlayerStyle(
                 state, source, background, modeLabel, isLiked, lyricLine, styledActions, styleModifier,
+                lyricTranslation,
             )
             PlayerStyle.SPLIT_VIEW -> SplitViewPlayerStyle(
                 state, source, background, modeLabel, isLiked, lyricLine, styledActions, styleModifier,
@@ -91,6 +95,7 @@ internal fun PlayerScreen(
             )
             PlayerStyle.FROSTED -> FrostedPlayerStyle(
                 state, source, background, modeLabel, isLiked, lyricLine, styledActions, styleModifier,
+                lyricTranslation,
             )
         }
     }

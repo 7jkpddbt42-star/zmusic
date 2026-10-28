@@ -24,7 +24,13 @@ class OkHttpTransport(
             .build()
 
         client.newCall(request).execute().use { response ->
-            return TransportResponse(response.code, response.body.string(), response.headers("Set-Cookie"))
+            return TransportResponse(
+                code = response.code,
+                body = response.body.string(),
+                setCookies = response.headers("Set-Cookie"),
+                contentType = response.header("Content-Type"),
+                contentRange = response.header("Content-Range"),
+            )
         }
     }
 
@@ -36,7 +42,13 @@ class OkHttpTransport(
             .build()
 
         client.newCall(request).execute().use { response ->
-            return TransportResponse(response.code, response.body.string(), response.headers("Set-Cookie"))
+            return TransportResponse(
+                code = response.code,
+                body = response.body.string(),
+                setCookies = response.headers("Set-Cookie"),
+                contentType = response.header("Content-Type"),
+                contentRange = response.header("Content-Range"),
+            )
         }
     }
 }

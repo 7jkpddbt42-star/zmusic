@@ -134,7 +134,8 @@ class PlaybackService : MediaSessionService() {
     private fun prefetchNext() {
         val nextIndex = player.nextMediaItemIndex
         if (nextIndex == C.INDEX_UNSET) return
-        val songId = player.getMediaItemAt(nextIndex).mediaId.toLongOrNull() ?: return
+        val item = player.getMediaItemAt(nextIndex)
+        val songId = item.mediaId.toLongOrNull() ?: return
         if (sharedSongStreamCache.get(songId) != null) return
 
         prefetchScope.launch {
@@ -144,7 +145,8 @@ class PlaybackService : MediaSessionService() {
     }
 
     private companion object {
-        const val RESOLVE_TIMEOUT_MS = 15_000L
+        // 免费听歌模式要串行试几个通道，单次取流给足预算，避免还没试完就被丢弃
+        const val RESOLVE_TIMEOUT_MS = 20_000L
         const val MAX_STREAM_ATTEMPTS = 3
     }
 }

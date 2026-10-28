@@ -47,6 +47,7 @@ fun MinimalPlayerStyle(
     lyricLine: String,
     actions: PlayerActions,
     modifier: Modifier = Modifier,
+    lyricTranslation: String = "",
 ) {
     PlayerBackdrop(
         background = background,
@@ -98,6 +99,7 @@ fun MinimalPlayerStyle(
                 lyricLine = lyricLine,
                 onClick = actions.onOpenLyric,
                 foreground = Color.White,
+                translation = lyricTranslation,
             )
 
             Spacer(modifier = Modifier.height(20.dp))
@@ -159,14 +161,6 @@ fun MinimalPlayerStyle(
             )
 
             Spacer(modifier = Modifier.height(6.dp))
-
-            if (state.isBuffering) {
-                Text(
-                    text = "缓冲中…",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Color.White.copy(alpha = 0.60f),
-                )
-            }
         }
     }
 }

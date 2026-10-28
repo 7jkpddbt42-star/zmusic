@@ -43,6 +43,10 @@ class SettingsRepository(private val store: KeyValueStore) {
     private val _fallbackBaseUrl = MutableStateFlow(store.getString(KEY_FALLBACK_URL).orEmpty())
     val fallbackBaseUrl: StateFlow<String> = _fallbackBaseUrl.asStateFlow()
 
+    /** 免费听歌模式：开 / 关（关=普通模式，只用网易云官方音源）。 */
+    private val _freeSourceEnabled = MutableStateFlow(isFreeSourceEnabledNow())
+    val freeSourceEnabled: StateFlow<Boolean> = _freeSourceEnabled.asStateFlow()
+
     /** 主题偏好整包暴露：由若干设置 key 组成，UI 只订阅这一个 flow，接线更简单。 */
     private val _themeSpec = MutableStateFlow(readThemeSpec())
     val themeSpec: StateFlow<ThemeSpec> = _themeSpec.asStateFlow()
@@ -93,6 +97,17 @@ class SettingsRepository(private val store: KeyValueStore) {
         store.putString(KEY_FALLBACK_URL, trimmed)
         _fallbackBaseUrl.value = trimmed
     }
+
+    fun setFreeSourceEnabled(value: Boolean) {
+        store.putBoolean(KEY_FREE_SOURCE, value)
+        _freeSourceEnabled.value = value
+    }
+
+    /**
+     * 直接读持久化值。播放服务与界面各自持有 AppContainer，内存里的 StateFlow
+     * 不会互相同步，取流侧必须用这个「现读」入口，切换模式才能立刻生效。
+     */
+    fun isFreeSourceEnabledNow(): Boolean = store.getBoolean(KEY_FREE_SOURCE, false)
 
     fun setThemeMode(mode: ThemeMode) {
         store.putString(KEY_THEME_MODE, mode.key)
@@ -193,6 +208,7 @@ class SettingsRepository(private val store: KeyValueStore) {
         const val KEY_LYRIC_STYLE = "lyric_style"
         const val KEY_PLAYER_STYLE = "player_style"
         const val KEY_FALLBACK_URL = "fallback_base_url"
+        const val KEY_FREE_SOURCE = "free_source_enabled"
         const val KEY_THEME_MODE = "theme_mode"
         const val KEY_SEED_SOURCE = "seed_source"
         const val KEY_FIXED_SEED = "fixed_seed_argb"

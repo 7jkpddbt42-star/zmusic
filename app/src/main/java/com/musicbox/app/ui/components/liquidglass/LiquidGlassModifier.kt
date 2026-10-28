@@ -41,8 +41,12 @@ private const val HIGHLIGHT_ALPHA = 0.18f
 /** 边缘高光宽度（官方库 Highlight.width）。 */
 private val HIGHLIGHT_WIDTH = 1.dp
 
-/** 投影：原生 elevation 阴影（20dp），首帧由 RenderNode 直接绘制，不等背景层录制。 */
-private val GLASS_SHADOW_ELEVATION = 20.dp
+/** 投影：原生 elevation 阴影。默认 10dp + 半透明黑，收敛到「悬浮感」而不是「脏黑边」。 */
+private val GLASS_SHADOW_ELEVATION = 10.dp
+
+/** 投影颜色：纯黑会糊成脏边，改用低透明度黑，只保留贴地的层次感。 */
+private val GLASS_SHADOW_AMBIENT = Color.Black.copy(alpha = 0.16f)
+private val GLASS_SHADOW_SPOT = Color.Black.copy(alpha = 0.22f)
 
 /** 降级路径中近似高光覆盖的高度占比。 */
 private const val FALLBACK_HIGHLIGHT_FRACTION = 1f / 3f
@@ -92,7 +96,8 @@ internal fun blurRadiusForFallback(base: Dp, runtimeShaderSupported: Boolean): D
  * - 色调：`drawBackdrop(onDrawSurface)` 内 `drawRect(tint)` / 白色 alpha 0.08
  * - 高光：`Highlight(width: Dp, blurRadius: Dp, alpha: Float, style: HighlightStyle)` /
  *   width 1dp、alpha 0.18、Default(angle 45°, falloff 2)
- * - 阴影：Compose 原生 `Modifier.shadow` / 20dp（首帧即可见，不走库内 Shadow）
+ * - 阴影：Compose 原生 `Modifier.shadow` / 默认 10dp 半透明黑（首帧即可见，不走库内 Shadow），
+ *   小胶囊可传入更小的 shadowElevation 进一步减重
  * - 按压：`InteractionSource` 按下时整体缩放 0.98、折射 +20%、高光 +10%，spring 动画
  *
  * 降级（本项目 minSdk 26）：
@@ -112,6 +117,7 @@ fun Modifier.liquidGlass(
     dispersion: Boolean = true,
     highlight: Boolean = true,
     interactionSource: InteractionSource? = null,
+    shadowElevation: Dp = GLASS_SHADOW_ELEVATION,
 ): Modifier {
     // 按压进度：0 → 1 的 spring 过渡，驱动缩放、折射与高光同步变化
     val pressed = interactionSource?.let { it.collectIsPressedAsState().value } ?: false
@@ -125,7 +131,7 @@ fun Modifier.liquidGlass(
     )
 
     if (backdrop == null || !isBackdropBlurSupported()) {
-        return fallbackGlass(shape, tint, highlight)
+        return fallbackGlass(shape, tint, highlight, shadowElevation)
     }
 
     val scale = pressScaleForProgress(pressProgress)
@@ -136,11 +142,11 @@ fun Modifier.liquidGlass(
         }
         // 原生阴影：打开新界面/新面板时首帧就能画出，不会先缺一帧再补上
         .elevationShadow(
-            elevation = GLASS_SHADOW_ELEVATION,
+            elevation = shadowElevation,
             shape = shape,
             clip = false,
-            ambientColor = Color.Black,
-            spotColor = Color.Black,
+            ambientColor = GLASS_SHADOW_AMBIENT,
+            spotColor = GLASS_SHADOW_SPOT,
         )
         .drawBackdrop(
             backdrop = backdrop,
@@ -185,7 +191,12 @@ fun Modifier.liquidGlass(
  * 不采样背景（不具备 RenderEffect），但保证视觉仍是玻璃而非纯色块。
  */
 @Composable
-private fun Modifier.fallbackGlass(shape: Shape, tint: Color, highlight: Boolean): Modifier {
+private fun Modifier.fallbackGlass(
+    shape: Shape,
+    tint: Color,
+    highlight: Boolean,
+    shadowElevation: Dp,
+): Modifier {
     val fillBrush = remember(tint) {
         Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.18f), tint))
     }
@@ -196,11 +207,11 @@ private fun Modifier.fallbackGlass(shape: Shape, tint: Color, highlight: Boolean
     }
     return this
         .elevationShadow(
-            elevation = GLASS_SHADOW_ELEVATION,
+            elevation = shadowElevation,
             shape = shape,
             clip = false,
-            ambientColor = Color.Black,
-            spotColor = Color.Black,
+            ambientColor = GLASS_SHADOW_AMBIENT,
+            spotColor = GLASS_SHADOW_SPOT,
         )
         .background(fillBrush, shape)
         .then(

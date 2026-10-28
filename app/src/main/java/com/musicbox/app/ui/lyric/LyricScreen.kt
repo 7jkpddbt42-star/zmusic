@@ -115,7 +115,17 @@ internal fun LyricScreen(
     // 页面自有玻璃背景源：与播放页一致的真实背景（视频/图片/封面），顶部玻璃胶囊逐帧采样
     val backdrop = rememberGlassBackdrop()
 
-    Box(modifier = modifier.fillMaxSize()) {
+    // 空白处轻触 → 淡出返回播放页；歌词行、顶栏按钮各自的点击仍然优先
+    val collapseInteraction = remember { MutableInteractionSource() }
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .clickable(
+                interactionSource = collapseInteraction,
+                indication = null,
+                onClick = onCollapse,
+            ),
+    ) {
         // 背景源层：真实背景 + 压暗遮罩，视频播放时玻璃模糊逐帧更新；
         // 不再使用纯渐变，否则模糊与折射不可见
         GlassAmbientBackdrop(
@@ -138,6 +148,12 @@ internal fun LyricScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 12.dp, vertical = 6.dp)
+                    // 顶栏空白处吞掉点击，避免误触整页的「返回」手势
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = {},
+                    )
                     .liquidGlass(
                         backdrop = backdrop,
                         shape = RoundedCornerShape(28.dp),

@@ -1,15 +1,20 @@
 package com.musicbox.app.ui.styles
 
+import android.graphics.Bitmap
+import androidx.compose.animation.core.AnimationSpec
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -20,20 +25,31 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.Text
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.input.pointer.positionChange
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.musicbox.app.data.BackgroundSpec
@@ -46,12 +62,37 @@ import com.musicbox.app.ui.components.player.ProgressTimePlacement
 import com.musicbox.app.ui.components.player.SecondaryActions
 import com.musicbox.app.ui.components.player.TransportControls
 import com.musicbox.app.ui.player.PlaybackUiState
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.math.abs
+
+/** 拖过整页宽度的这个比例就提交切歌，否则回弹。 */
+private const val COMMIT_FRACTION = 0.22f
+
+/** 相邻两张唱片之间留的缝，滑动时能看清两张盘的分界。 */
+private val DiscGap = 30.dp
+
+/** 唱片回弹：略欠阻尼，停得住又有一点弹性。 */
+private val SettleSpec: AnimationSpec<Float> =
+    spring(dampingRatio = 0.86f, stiffness = Spring.StiffnessMediumLow)
+
+/**
+ * 手势结束后要做的事。
+ * 手势回调是「受限挂起作用域」，不能在里面直接跑动画，
+ * 因此只记录意图，由 [LaunchedEffect] 在普通协程里执行。
+ */
+private sealed interface StageAction {
+    data object Settle : StageAction
+    data class Commit(val forward: Boolean) : StageAction
+}
 
 /**
  * VINYL：黑胶唱片。
  *
  * 旋转唱盘 + 唱臂是视觉主体，标题与进度被压缩到盘面下方，控制区只有一行小尺寸按钮。
- * 左右拖动唱片可切歌（累计位移超过阈值才触发，避免误触）。
+ * 左右拖动唱片时，下一张（或上一张）唱片会跟着手指一起滑进来；松开后按位移提交切歌，
+ * 提交时唱片滑到位、索引归位，全程不闪不跳。唱臂固定在右上角，不跟着盘面平移，
+ * 只在拖动时轻轻抬起，播放/暂停仍有原有的落针/抬针动画。
  */
 @Composable
 fun VinylPlayerStyle(
@@ -90,53 +131,17 @@ fun VinylPlayerStyle(
                 modifier = Modifier.fillMaxWidth().weight(1f),
                 contentAlignment = Alignment.Center,
             ) {
-                Box(
-                    modifier = Modifier.fillMaxWidth(0.9f).aspectRatio(1f),
-                ) {
-                    VinylRecord(
-                        artworkUrl = state.artworkUrl,
-                        isPlaying = state.isPlaying,
-                        onBitmap = actions.onArtworkLoaded,
-                        modifier = Modifier
-                            .fillMaxSize(0.88f)
-                            .align(Alignment.Center)
-                            .clickable(onClick = actions.onOpenLyric)
-                            .pointerInput(actions.onNext, actions.onPrevious) {
-                                var total = 0f
-                                detectHorizontalDragGestures(
-                                    onDragStart = { total = 0f },
-                                    onDragCancel = { total = 0f },
-                                    onDragEnd = {
-                                        val threshold = 64.dp.toPx()
-                                        if (total < -threshold) actions.onNext()
-                                        if (total > threshold) actions.onPrevious()
-                                        total = 0f
-                                    },
-                                ) { _, dragAmount ->
-                                    total += dragAmount
-                                }
-                            },
-                    )
-
-                    Tonearm(
-                        isPlaying = state.isPlaying,
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(top = 4.dp, end = 2.dp)
-                            .size(width = 96.dp, height = 148.dp),
-                    )
-                }
+                VinylStage(
+                    state = state,
+                    onOpenLyric = actions.onOpenLyric,
+                    onNext = actions.onNext,
+                    onPrevious = actions.onPrevious,
+                    onArtworkLoaded = actions.onArtworkLoaded,
+                    modifier = Modifier.fillMaxWidth(0.96f).aspectRatio(1f),
+                )
             }
 
-            Text(
-                text = "黑胶唱片 · 左右滑动切歌",
-                style = androidx.compose.material3.MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                color = Color.White.copy(alpha = 0.46f),
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth(),
-            )
-
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
             MediaHeader(
                 title = state.title.orEmpty(),
@@ -228,11 +233,211 @@ fun VinylPlayerStyle(
 }
 
 /**
- * 唱臂：播放时向内压到唱片上（角度更小），暂停时抬起。
- * 旋转只在 graphicsLayer 阶段执行，不触发重组。
+ * 唱盘舞台：单张唱片时可点击进歌词页；左右拖动时相邻唱片随手指滑入。
+ *
+ * 索引处理遵循「视觉位置连续」：提交切歌先把唱片滑到 ±1 页，等播放器索引真正变化后
+ * 再把基准索引归位并重置偏移，两个动作对同一条唱片在屏幕上等价，因此看不出跳变。
  */
 @Composable
-private fun Tonearm(isPlaying: Boolean, modifier: Modifier = Modifier) {
+private fun VinylStage(
+    state: PlaybackUiState,
+    onOpenLyric: () -> Unit,
+    onNext: () -> Unit,
+    onPrevious: () -> Unit,
+    onArtworkLoaded: (Bitmap) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val queue = state.queue
+    var settledIndex by remember { mutableIntStateOf(state.currentIndex) }
+    // 页偏移：-1 表示下一张滑到中间，+1 表示上一张滑到中间；只在图层阶段被读取
+    var pageOffset by remember { mutableFloatStateOf(0f) }
+    // 拖动/回弹/提交动画期间才组合相邻唱片，静止时只维护一张，避免多跑两份旋转时钟
+    var neighboursVisible by remember { mutableStateOf(false) }
+    var pending by remember { mutableStateOf<StageAction?>(null) }
+
+    // 播放器索引变化（按钮切歌 / 自动播完 / 滑动提交）→ 基准归位
+    LaunchedEffect(state.currentIndex) {
+        if (state.currentIndex != settledIndex) {
+            settledIndex = state.currentIndex
+            pageOffset = 0f
+            neighboursVisible = false
+        }
+    }
+
+    // 动画（回弹 / 提交切歌）在普通协程里执行，手势回调只负责记录意图
+    LaunchedEffect(pending) {
+        suspend fun animateOffsetTo(target: Float, spec: AnimationSpec<Float>) {
+            animate(
+                initialValue = pageOffset,
+                targetValue = target,
+                animationSpec = spec,
+                block = { value, _ -> pageOffset = value },
+            )
+        }
+
+        when (val action = pending) {
+            StageAction.Settle -> {
+                animateOffsetTo(0f, SettleSpec)
+                neighboursVisible = false
+                pending = null
+            }
+
+            is StageAction.Commit -> {
+                animateOffsetTo(if (action.forward) -1f else 1f, tween(durationMillis = 260))
+                val startIndex = settledIndex
+                if (action.forward) onNext() else onPrevious()
+                // 播放器索引迟迟不变（队列尽头 / 播放失败）→ 把唱片滑回原位
+                val moved = withTimeoutOrNull(1200) {
+                    snapshotFlow { settledIndex }.first { it != startIndex }
+                } != null
+                if (!moved) {
+                    animateOffsetTo(0f, SettleSpec)
+                    neighboursVisible = false
+                }
+                pending = null
+            }
+
+            null -> Unit
+        }
+    }
+
+    BoxWithConstraints(
+        modifier = modifier
+            .pointerInput(state.currentIndex) {
+                val gapPx = DiscGap.toPx()
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    // 抓住唱片即打断未完成的回弹/提交动画，从当前位移继续拖
+                    pending = null
+                    val slop = viewConfiguration.touchSlop
+                    var totalX = 0f
+                    var dragging = false
+                    var cancelled = false
+                    val pagePx = size.width.toFloat() + gapPx
+
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        val change = event.changes.firstOrNull { it.id == down.id }
+                        if (change == null) {
+                            cancelled = true
+                            break
+                        }
+                        if (change.changedToUpIgnoreConsumed()) break
+                        if (change.isConsumed && !dragging) {
+                            cancelled = true
+                            break
+                        }
+
+                        val dx = change.positionChange().x
+                        totalX += dx
+                        if (!dragging && abs(totalX) > slop) {
+                            dragging = true
+                            neighboursVisible = true
+                        }
+                        if (!dragging) continue
+
+                        change.consume()
+                        val hasNext = queue.getOrNull(settledIndex + 1) != null
+                        val hasPrev = queue.getOrNull(settledIndex - 1) != null
+                        val raw = pageOffset + dx / pagePx
+                        // 没有相邻歌曲时仍允许轻微拖动，但拉不满整页
+                        val limited = when {
+                            raw < 0f && !hasNext -> raw * 0.18f
+                            raw > 0f && !hasPrev -> raw * 0.18f
+                            else -> raw
+                        }.coerceIn(-1.1f, 1.1f)
+                        pageOffset = limited
+                    }
+
+                    if (cancelled) {
+                        pending = StageAction.Settle
+                        return@awaitEachGesture
+                    }
+                    if (!dragging) {
+                        onOpenLyric()
+                        return@awaitEachGesture
+                    }
+
+                    val offset = pageOffset
+                    val goNext = offset < -COMMIT_FRACTION && queue.getOrNull(settledIndex + 1) != null
+                    val goPrev = offset > COMMIT_FRACTION && queue.getOrNull(settledIndex - 1) != null
+                    pending = when {
+                        goNext -> StageAction.Commit(forward = true)
+                        goPrev -> StageAction.Commit(forward = false)
+                        else -> StageAction.Settle
+                    }
+                }
+            },
+    ) {
+        val density = LocalDensity.current
+        val pagePx = with(density) { maxWidth.toPx() + DiscGap.toPx() }
+        val current = settledIndex
+
+        val indices = if (current < 0) {
+            listOf(-1)
+        } else {
+            buildList {
+                add(current)
+                if (neighboursVisible) {
+                    if (current - 1 >= 0) add(current - 1)
+                    if (current + 1 <= queue.lastIndex) add(current + 1)
+                }
+            }
+        }
+
+        indices.forEach { index ->
+            key(index) {
+                val artwork = when {
+                    index == state.currentIndex -> state.artworkUrl ?: queue.getOrNull(index)?.artworkUrl
+                    else -> queue.getOrNull(index)?.artworkUrl
+                }
+                VinylRecord(
+                    artworkUrl = artwork,
+                    isPlaying = state.isPlaying,
+                    onBitmap = if (index == current) onArtworkLoaded else null,
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            val relative = (index - current) + pageOffset
+                            translationX = relative * pagePx
+                            val distance = abs(relative).coerceIn(0f, 1f)
+                            val scale = 1f - 0.10f * distance
+                            scaleX = scale
+                            scaleY = scale
+                            alpha = (1f - 0.55f * distance).coerceIn(0.32f, 1f)
+                        }
+                        .shadow(
+                            elevation = 16.dp,
+                            shape = CircleShape,
+                            ambientColor = Color.Black.copy(alpha = 0.26f),
+                            spotColor = Color.Black.copy(alpha = 0.34f),
+                        ),
+                )
+            }
+        }
+
+        // 唱臂固定在盘面右上角：不随唱片滑动，只在拖动时抬起
+        Tonearm(
+            isPlaying = state.isPlaying,
+            dragProgress = { abs(pageOffset).coerceIn(0f, 1f) },
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .size(width = 94.dp, height = 146.dp),
+        )
+    }
+}
+
+/**
+ * 唱臂：播放时向内压到唱片上（角度更小），暂停时抬起。
+ * 拖动唱片时按拖动进度再抬起几度，松开自动落回；旋转只在 graphicsLayer 阶段执行。
+ */
+@Composable
+private fun Tonearm(
+    isPlaying: Boolean,
+    dragProgress: () -> Float,
+    modifier: Modifier = Modifier,
+) {
     val angle by animateFloatAsState(
         targetValue = if (isPlaying) 4f else 26f,
         animationSpec = tween(durationMillis = 720),
@@ -241,13 +446,19 @@ private fun Tonearm(isPlaying: Boolean, modifier: Modifier = Modifier) {
 
     Canvas(
         modifier = modifier.graphicsLayer {
-            rotationZ = angle
+            rotationZ = angle + dragProgress() * 11f
             transformOrigin = TransformOrigin(0.84f, 0.12f)
         },
     ) {
         val base = Offset(size.width * 0.84f, size.height * 0.12f)
         val tip = Offset(base.x - size.width * 0.16f, size.height * 0.94f)
 
+        // 配重块：让唱臂有机械感
+        drawCircle(
+            color = Color.White.copy(alpha = 0.18f),
+            radius = 12.dp.toPx(),
+            center = Offset(base.x + size.width * 0.13f, base.y - size.height * 0.06f),
+        )
         drawCircle(
             color = Color.White.copy(alpha = 0.30f),
             radius = 10.dp.toPx(),

@@ -16,6 +16,7 @@ import com.musicbox.app.player.NetworkMonitor
 import com.musicbox.app.source.FailoverProvider
 import com.musicbox.app.source.MusicProvider
 import com.musicbox.app.source.failover.FallbackProvider
+import com.musicbox.app.source.free.FreeSourceProvider
 import com.musicbox.app.source.netease.NetEaseLoginApi
 import com.musicbox.app.source.netease.NetEaseHeader
 import com.musicbox.app.source.netease.NetEasePersonalApi
@@ -24,7 +25,9 @@ import com.musicbox.app.source.netease.OkHttpTransport
 import com.musicbox.app.source.netease.PersonalApi
 import com.musicbox.app.ui.theme.ArtworkThemeState
 import com.musicbox.app.ui.theme.normalizeSeed
+import okhttp3.OkHttpClient
 import java.io.File
+import java.util.concurrent.TimeUnit
 
 /**
  * 极简依赖装配。MI-4 之前不引入 DI 框架。
@@ -108,8 +111,25 @@ class AppContainer(context: Context) {
         baseUrl = { settings.fallbackBaseUrl.value },
     )
 
+    /**
+     * 免费听歌模式包装：开关状态每次现读持久化值（播放服务与界面是两个容器实例），
+     * 关闭时直通官方网易云，开启时才在试听片段上追加第三方通道。
+     * 第三方接口响应慢的直接判负，所以这里用独立的短超时客户端。
+     */
+    private val freeSourceProvider: MusicProvider = FreeSourceProvider(
+        official = netEaseProvider,
+        transport = OkHttpTransport(
+            OkHttpClient.Builder()
+                .connectTimeout(3, TimeUnit.SECONDS)
+                .readTimeout(4, TimeUnit.SECONDS)
+                .build(),
+        ),
+        enabled = { settings.isFreeSourceEnabledNow() },
+        appLog = log,
+    )
+
     /** UI 侧统一用这个：主源优先，主源临时失效时自动试一次备用源。 */
-    val provider: MusicProvider = FailoverProvider(netEaseProvider, fallbackProvider)
+    val provider: MusicProvider = FailoverProvider(freeSourceProvider, fallbackProvider)
 
     private fun filesDir(name: String): File = File(appContext.filesDir, name)
 

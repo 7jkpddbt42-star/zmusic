@@ -6,6 +6,7 @@ import com.musicbox.app.data.LyricDiskCache
 import com.musicbox.app.lyric.LyricParser
 import com.musicbox.app.lyric.LyricTimeline
 import com.musicbox.app.lyric.currentLineTextAt
+import com.musicbox.app.lyric.currentTranslationAt
 import com.musicbox.app.lyric.nextLineTextAt
 import com.musicbox.app.lyric.sharedLyricCache
 import com.musicbox.app.source.MusicProvider
@@ -50,9 +51,17 @@ class LyricViewModel(
     private val _showRomaji = MutableStateFlow(false)
     val showRomaji: StateFlow<Boolean> = _showRomaji.asStateFlow()
 
-    /** 迷你播放条展示的"当前行文本"，仅在当前行变化时才更新（避免高频写入触发重组）。 */
+    /** 迷你播放条展示的"当前行文本"（原文 · 译文），仅在当前行变化时才更新。 */
     private val _currentLineText = MutableStateFlow("")
     val currentLineText: StateFlow<String> = _currentLineText.asStateFlow()
+
+    /** 播放页歌词预览第一排：原文单独一份，便于和译文分成两排排版。 */
+    private val _currentLineOriginal = MutableStateFlow("")
+    val currentLineOriginal: StateFlow<String> = _currentLineOriginal.asStateFlow()
+
+    /** 播放页歌词预览第二排：译文；关闭译文或无译文时为空串。 */
+    private val _currentLineTranslation = MutableStateFlow("")
+    val currentLineTranslation: StateFlow<String> = _currentLineTranslation.asStateFlow()
 
     private var loadedSongId: Long? = null
     private var job: Job? = null
@@ -98,6 +107,10 @@ class LyricViewModel(
         val timeline = (_state.value as? LyricUiState.Ready)?.timeline
         val text = timeline?.currentLineTextAt(positionMs, _showTranslation.value).orEmpty()
         if (text != _currentLineText.value) _currentLineText.value = text
+        val original = timeline?.currentLineTextAt(positionMs, includeTranslation = false).orEmpty()
+        if (original != _currentLineOriginal.value) _currentLineOriginal.value = original
+        val translation = timeline?.currentTranslationAt(positionMs, _showTranslation.value).orEmpty()
+        if (translation != _currentLineTranslation.value) _currentLineTranslation.value = translation
         publishOverlay()
     }
 
@@ -142,6 +155,8 @@ class LyricViewModel(
             job?.cancel()
             loadedSongId = null
             _currentLineText.value = ""
+            _currentLineOriginal.value = ""
+            _currentLineTranslation.value = ""
             _state.value = LyricUiState.Idle
             // 无当前歌：桌面歌词悬浮窗立即隐藏
             LyricBus.publish(LyricOverlayState.EMPTY)
@@ -156,6 +171,8 @@ class LyricViewModel(
         job?.cancel()
         // 进入新歌的加载（含 Loading）：清空上一首遗留的当前行文本
         _currentLineText.value = ""
+        _currentLineOriginal.value = ""
+        _currentLineTranslation.value = ""
         // 新歌歌词尚未 Ready：先隐藏悬浮窗，待 Ready 后由位置驱动重新发布
         LyricBus.publish(LyricOverlayState.EMPTY)
 

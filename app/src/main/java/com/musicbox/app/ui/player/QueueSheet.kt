@@ -96,10 +96,11 @@ internal fun QueueSheet(
     var closing by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
-    // 遮罩随抽屉一起过渡：抽屉滑入时逐渐压暗，收起时同步淡出
+    // 遮罩随抽屉一起过渡：进场 340ms、退场 260ms，与抽屉滑出同帧结束，
+    // 避免抽屉已滑走、遮罩还剩一点暗色导致关闭瞬间闪一下。
     val scrimAlpha by animateFloatAsState(
         targetValue = if (shown) 0.46f else 0f,
-        animationSpec = tween(QUEUE_SLIDE_IN_MS),
+        animationSpec = tween(if (shown) QUEUE_SLIDE_IN_MS else QUEUE_SLIDE_OUT_MS),
         label = "queueScrim",
     )
 

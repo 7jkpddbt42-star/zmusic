@@ -32,6 +32,8 @@ data class QueueItem(
     val title: String,
     val artist: String,
     val isCurrent: Boolean,
+    /** 下一首的封面：黑胶风格左右滑动切歌时要把下一张唱片一起滑出来。 */
+    val artworkUrl: String? = null,
 )
 
 /** UI 需要的全部播放状态快照。 */
@@ -45,7 +47,6 @@ data class PlaybackUiState(
     val album: String? = null,
     val artworkUrl: String? = null,
     val isPlaying: Boolean = false,
-    val isBuffering: Boolean = false,
     val isTrial: Boolean = false,
     val positionMs: Long = 0L,
     val durationMs: Long = 0L,
@@ -88,7 +89,7 @@ class PlaybackConnection(private val context: Context) : PositionSource {
             } else {
                 "当前歌曲无法播放，已跳过"
             }
-            _state.update { it.copy(errorMessage = text, isBuffering = false) }
+            _state.update { it.copy(errorMessage = text) }
             val current = _controller.value
             if (current != null && current.hasNextMediaItem()) {
                 current.seekToNextMediaItem()
@@ -155,7 +156,19 @@ class PlaybackConnection(private val context: Context) : PositionSource {
         val metadata = item?.mediaMetadata
         val songId = item?.mediaId?.toLongOrNull()
         val duration = controller.duration
+        val index = controller.currentMediaItemIndex
         _state.update { previous ->
+            // 队列每 250ms 才刷新一次位置，如果每次都重建整条 QueueItem 列表，
+            // 一首歌 30 首队列就是每秒 120 次多余对象分配；只在队列结构真正变化时重建。
+            val queue = if (
+                previous.queue.size == controller.mediaItemCount &&
+                previous.currentIndex == index &&
+                previous.currentSongId == songId
+            ) {
+                previous.queue
+            } else {
+                queueOf(controller)
+            }
             previous.copy(
                 connected = true,
                 hasCurrent = item != null,
@@ -165,12 +178,11 @@ class PlaybackConnection(private val context: Context) : PositionSource {
                 album = metadata?.albumTitle?.toString(),
                 artworkUrl = metadata?.artworkUri?.toString(),
                 isPlaying = controller.isPlaying,
-                isBuffering = controller.playbackState == Player.STATE_BUFFERING,
                 isTrial = songId?.let { sharedSongStreamCache.get(it)?.isTrial } == true,
                 positionMs = controller.currentPosition.coerceAtLeast(0),
                 durationMs = if (duration > 0) duration else 0L,
-                queue = queueOf(controller),
-                currentIndex = controller.currentMediaItemIndex,
+                queue = queue,
+                currentIndex = index,
             )
         }
     }
@@ -183,6 +195,7 @@ class PlaybackConnection(private val context: Context) : PositionSource {
                 title = item.mediaMetadata.title?.toString().orEmpty(),
                 artist = item.mediaMetadata.artist?.toString().orEmpty(),
                 isCurrent = index == controller.currentMediaItemIndex,
+                artworkUrl = item.mediaMetadata.artworkUri?.toString(),
             )
         }
 

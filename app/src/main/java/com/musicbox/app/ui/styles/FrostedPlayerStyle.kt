@@ -48,6 +48,7 @@ fun FrostedPlayerStyle(
     lyricLine: String,
     actions: PlayerActions,
     modifier: Modifier = Modifier,
+    lyricTranslation: String = "",
 ) {
     val backdrop = rememberPlayerGlassBackdrop()
 
@@ -119,6 +120,7 @@ fun FrostedPlayerStyle(
                             lyricLine = lyricLine,
                             onClick = actions.onOpenLyric,
                             foreground = Color.White,
+                            translation = lyricTranslation,
                         )
 
                         Spacer(modifier = Modifier.height(12.dp))

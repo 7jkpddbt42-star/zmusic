@@ -1,10 +1,10 @@
-# ZMusic
+# z-music
 
 纯原生安卓在线音乐播放器：**Kotlin + Jetpack Compose + Media3**，没有 WebView，没有套壳，也不需要任何 API Key 或账号配置。
 
-- 应用名：`musicbox`
+- 应用名：`z-music`
 - 包名：`com.musicbox.app`
-- 版本：`0.1.0`
+- 版本：`1.0.0`（正式版，R8 混淆 + 签名）
 - 系统要求：Android 8.0（API 26）及以上，`targetSdk 36`
 
 核心体验是「搜索即播 + 逐字歌词」：搜索网易云曲库、在线播放、逐字歌词跟唱，并在系统层面完整接入媒体通知、锁屏控制与耳机线控。
@@ -44,7 +44,7 @@
 | `tool_minimal` | 工具极简 | 低饱和灰蓝，高密度信息，无边框卡片 |
 | `frosted` | 毛玻璃氛围 | 封面模糊铺底，前景毛玻璃浮层卡片 |
 
-- 播放队列面板：查看、跳转、删除、切换播放模式（顺序 / 单曲循环 / 随机）
+- 播放队列：自下而上的液态玻璃抽屉，支持查看、跳转、删除、切换播放模式（顺序 / 单曲循环 / 随机）
 - 细线进度条，支持拖动预览与两端时间显示
 - 封面以最高 1080px 精确解码，缓存按「尺寸 + URL」分键
 - 切歌时封面背景交叉淡入淡出，不出现空白闪烁
@@ -97,7 +97,7 @@
 ## 项目结构
 
 ```
-zmusic/
+z-music/
 ├── app/
 │   ├── build.gradle.kts
 │   └── src/
@@ -117,7 +117,8 @@ zmusic/
 │       └── test/                          # 单元测试（签名、解析、时间轴、缓存等）
 ├── docs/                                  # 设计文档与实现计划
 ├── gradle/wrapper/                        # Gradle Wrapper
-├── build-apk.sh                           # 一键打包脚本
+├── build-apk.sh                           # 一键打包脚本（正式版 / 调试版）
+├── app/proguard-rules.pro                 # 正式版 R8 规则（Gson / 本地持久化模型）
 ├── build.gradle.kts
 ├── settings.gradle.kts
 └── gradle.properties
@@ -136,27 +137,48 @@ zmusic/
 ### 一键打包
 
 ```bash
-bash build-apk.sh
+bash build-apk.sh          # 正式版（release）：R8 混淆 + 资源压缩 + 签名校验 → dist/z-music-release.apk
+bash build-apk.sh debug    # 调试版（debug）：包名带 .debug → dist/z-music-debug.apk
 ```
 
-脚本会依次完成：检查 JDK 与 Android SDK → 执行 `:app:assembleDebug` → 把产物复制到 `dist/ZMusic-debug.apk`。
+正式版脚本会依次完成：检查 JDK 与 Android SDK → 校验签名配置 → 执行 `:app:assembleRelease` → 复制产物 → `apksigner` 验签。
+
+### 正式版签名
+
+签名配置放在项目根目录的 `keystore.properties`（已加入 `.gitignore`，不会提交）：
+
+```properties
+storeFile=keystore/zmusic-release.jks
+storePassword=你的密码
+keyAlias=zmusic
+keyPassword=你的密码
+```
+
+首次使用先生成密钥：
+
+```bash
+mkdir -p keystore
+keytool -genkeypair -v -keystore keystore/zmusic-release.jks -storetype PKCS12 \
+  -alias zmusic -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=ZMusic"
+```
+
+没有该文件时 `./gradlew :app:assembleRelease` 仍能编译，但产物未签名、不能直接安装；脚本会直接报错提示。
 
 ### 手动构建
 
 ```bash
 chmod +x gradlew
-./gradlew :app:assembleDebug
+./gradlew :app:assembleRelease   # 正式版
+./gradlew :app:assembleDebug     # 调试版
 ```
 
-产物位于 `app/build/outputs/apk/debug/app-debug.apk`。
+产物分别位于 `app/build/outputs/apk/release/app-release.apk` 与 `app/build/outputs/apk/debug/app-debug.apk`。
 
 ### 安装
 
 ```bash
-adb install -r dist/ZMusic-debug.apk
+adb install -r dist/z-music-release.apk
 ```
-
-仓库根目录也附带了一份早前构建的 `app-debug.apk`，可直接安装；如需与源码完全一致，请运行脚本重新打包。
 
 ### 单元测试
 
@@ -174,7 +196,7 @@ adb install -r dist/ZMusic-debug.apk
 - 桌面歌词需要在系统设置中授予「显示在其他应用上层」权限
 - vivo 等厂商的私有锁屏歌词没有公开接口，只能使用标准媒体通知与锁屏控件
 - 不含本地音乐扫描与本地播放能力，定位是纯在线播放器
-- 仅提供 debug 构建，未配置正式签名与上架
+- 正式版使用本机自签名密钥，未上架应用商店；如需自行分发，请替换为自己的 `keystore.properties`
 
 ---
 

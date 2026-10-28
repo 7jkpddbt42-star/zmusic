@@ -54,9 +54,21 @@ class PlayerViewModel(
 
     fun clearError() = connection.clearError()
 
-    /** 点歌：把整套搜索结果作为队列交给 ExoPlayer，从 startIndex 开始播。 */
+    /**
+     * 点歌：把整套列表作为队列交给 ExoPlayer，从 startIndex 开始播。
+     *
+     * 先预取目标歌曲地址；如果它不可播（版权 / 数字专辑 / 无地址），
+     * 自动向后找同队列里第一首可播的歌，而不是整单失败。
+     */
     fun play(songs: List<Song>, startIndex: Int) {
         if (songs.isEmpty() || startIndex !in songs.indices) return
+        val queue = songs.filter { it.id > 0 }
+        if (queue.isEmpty()) {
+            _message.value = "队列里没有可播放的歌曲"
+            return
+        }
+        val targetId = songs[startIndex].id
+        val firstIndex = queue.indexOfFirst { it.id == targetId }.coerceAtLeast(0)
         viewModelScope.launch {
             val controller = connection.awaitController()
             if (controller == null) {
@@ -64,17 +76,34 @@ class PlayerViewModel(
                 return@launch
             }
 
-            // 先把当前这首的地址取好并写进共享缓存，让 resolver 打开时不阻塞
-            val target = songs[startIndex]
-            val info = provider.getStreamUrl(target.id).getOrElse { error ->
-                _message.value = error.toUserMessage()
+            var playIndex = -1
+            var lastError: Throwable? = null
+            // 只探测前几首：整张歌单都不可播时，不应该串行打上百个取流请求把用户晾在这里
+            val attempts = minOf(queue.size, MAX_STREAM_PREFETCH)
+            for (offset in 0 until attempts) {
+                val index = (firstIndex + offset) % queue.size
+                val info = provider.getStreamUrl(queue[index].id)
+                    .getOrElse { error ->
+                        lastError = error
+                        null
+                    }
+                if (info != null) {
+                    sharedSongStreamCache.put(queue[index].id, info)
+                    playIndex = index
+                    break
+                }
+            }
+            if (playIndex < 0) {
+                _message.value = lastError?.toUserMessage() ?: "队列里没有可播放的歌曲"
                 return@launch
             }
-            sharedSongStreamCache.put(target.id, info)
+            if (playIndex != firstIndex) {
+                _message.value = "已跳过不可播放的歌曲"
+            }
 
             controller.setMediaItems(
-                songs.map { it.toQueueMediaItem() },
-                startIndex,
+                queue.map { it.toQueueMediaItem() },
+                playIndex,
                 C.TIME_UNSET,
             )
             connection.playMode.value.applyTo(controller)
@@ -119,6 +148,39 @@ class PlayerViewModel(
         if (index !in 0 until controller.mediaItemCount) return
         controller.removeMediaItem(index)
     }
+
+    /**
+     * 切换音源模式后重新取流：把当前队列项的占位 URI 换一条（带随机 nonce），
+     * ExoPlayer 就会重建媒体源、按新模式重新解析地址，同时把播放进度拉回原处。
+     * 歌曲、队列、播放模式都不变，只有地址来源换了。
+     */
+    fun reloadCurrentStream() {
+        val controller = connection.controller.value ?: return
+        if (controller.mediaItemCount == 0) return
+        val index = controller.currentMediaItemIndex
+        if (index == C.INDEX_UNSET) return
+        val item = controller.getMediaItemAt(index)
+        val songId = item.mediaId.toLongOrNull() ?: return
+        val position = controller.currentPosition
+        val wasPlaying = controller.isPlaying
+        val metadata = item.mediaMetadata
+        viewModelScope.launch {
+            val rebuilt = MediaItem.Builder()
+                .setMediaId(item.mediaId)
+                .setUri(
+                    SongUri.placeholder(
+                        songId = songId,
+                        nonce = System.currentTimeMillis().toString(),
+                    ),
+                )
+                .setMediaMetadata(metadata)
+                .build()
+            controller.replaceMediaItem(index, rebuilt)
+            controller.prepare()
+            controller.seekTo(index, position)
+            if (wasPlaying) controller.play()
+        }
+    }
 }
 
 /**
@@ -138,3 +200,6 @@ private fun Song.toQueueMediaItem(): MediaItem = MediaItem.Builder()
             .build(),
     )
     .build()
+
+/** 起播前最多串行探测多少首，避免整张歌单都不可播时长时间无响应。 */
+private const val MAX_STREAM_PREFETCH = 8

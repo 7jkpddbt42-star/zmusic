@@ -25,12 +25,18 @@ data class HomeUiState(
     val error: String? = null,
 )
 
-/** 点开的歌单目标。[playlistId] 为空表示每日推荐（直接复用首页已加载的列表）。 */
+/**
+ * 点开的歌单目标。
+ *
+ * [playlistId] 为空且 [isLiked] 为 false 时表示每日推荐（直接复用首页已加载的列表）；
+ * [isLiked] 为 true 时表示「我喜欢的音乐」，即使还没同步到歌单摘要也会按 uid 重新解析。
+ */
 data class PlaylistTarget(
     val title: String,
     val coverUrl: String?,
     val subtitle: String,
     val playlistId: Long? = null,
+    val isLiked: Boolean = false,
 )
 
 /** 歌单详情页状态。 */
@@ -150,9 +156,19 @@ class HomeViewModel(
             var liked: PlaylistSummary? = null
             var playlists: List<PlaylistSummary> = emptyList()
             if (s.isLoggedIn && s.userId > 0) {
-                val all = personalApi.userPlaylists(s.userId).getOrDefault(emptyList())
-                liked = all.firstOrNull { it.isLiked }
-                playlists = all.filterNot { it.isLiked }
+                personalApi.userPlaylists(s.userId)
+                    .onSuccess { all ->
+                        // 正常按 specialType=5 识别；个别账号字段缺失时按名称兜底，
+                        // 避免「我喜欢的音乐」因为一个可选字段缺失就整块消失。
+                        liked = all.firstOrNull { it.isLiked }
+                            ?: all.firstOrNull { it.name.contains(LIKED_NAME) }
+                        playlists = all.filter { it.id != liked?.id }
+                    }
+                    .onFailure { e ->
+                        // 以前这里 getOrDefault(emptyList()) 会把失败静默吞掉，
+                        // 导致已登录用户看到一个空歌单列表且「我喜欢的」点了没反应。
+                        _message.value = "个人歌单同步失败：${e.toUserMessage()}"
+                    }
             }
 
             _state.value = HomeUiState(
@@ -233,6 +249,10 @@ class HomeViewModel(
 
     fun openDetail(target: PlaylistTarget) {
         lastTarget = target
+        if (target.isLiked) {
+            openLikedDetail(target)
+            return
+        }
         val id = target.playlistId
         if (id == null) {
             _detail.value = PlaylistDetailUiState(
@@ -243,6 +263,15 @@ class HomeViewModel(
             )
             return
         }
+        loadPlaylistSongs(target, id)
+    }
+
+    /**
+     * 「我喜欢的音乐」不依赖首页是否已经同步到歌单摘要：
+     * 现读会话补 uid → 现拉个人歌单找 liked id → 再取曲目。
+     * 这样登录刚完成、歌单接口偶发失败时，点「我喜欢的」也不会没反应或被带去登录页。
+     */
+    private fun openLikedDetail(target: PlaylistTarget) {
         _detail.value = PlaylistDetailUiState(
             title = target.title,
             coverUrl = target.coverUrl,
@@ -251,13 +280,70 @@ class HomeViewModel(
         )
         detailJob?.cancel()
         detailJob = viewModelScope.launch {
+            var s = sessionStore.session.value
+            if (!s.isLoggedIn) {
+                _detail.value = null
+                _message.value = "登录网易云后即可同步「我喜欢的音乐」"
+                return@launch
+            }
+            if (s.userId <= 0) {
+                loginApi.fetchAccount(s.musicU.orEmpty(), s.csrf).getOrNull()?.let { profile ->
+                    sessionStore.updateProfile(
+                        profile.nickname,
+                        profile.userId,
+                        profile.avatarUrl,
+                        profile.listenSongs,
+                    )
+                    s = s.copy(userId = profile.userId)
+                }
+            }
+            if (s.userId <= 0) {
+                _detail.value = PlaylistDetailUiState(
+                    title = target.title,
+                    coverUrl = target.coverUrl,
+                    subtitle = target.subtitle,
+                    error = "账号信息还没同步完成，请稍后重试",
+                )
+                return@launch
+            }
+            val id = target.playlistId ?: personalApi.userPlaylists(s.userId)
+                .getOrNull()
+                ?.firstOrNull { it.isLiked || it.name.contains(LIKED_NAME) }
+                ?.id
+            if (id == null || id <= 0) {
+                _detail.value = PlaylistDetailUiState(
+                    title = target.title,
+                    coverUrl = target.coverUrl,
+                    subtitle = target.subtitle,
+                    error = "暂时没有同步到「我喜欢的音乐」，请稍后重试",
+                )
+                return@launch
+            }
+            loadPlaylistSongs(target, id, inPlace = true)
+        }
+    }
+
+    private fun loadPlaylistSongs(target: PlaylistTarget, id: Long, inPlace: Boolean = false) {
+        if (!inPlace) {
+            _detail.value = PlaylistDetailUiState(
+                title = target.title,
+                coverUrl = target.coverUrl,
+                subtitle = target.subtitle,
+                loading = true,
+            )
+            detailJob?.cancel()
+        }
+        detailJob = viewModelScope.launch {
             personalApi.playlistSongs(id)
                 .onSuccess { songs ->
+                    // 歌单详情可能带重复曲目或空 id，直接进队列会触发 LazyColumn 重复 key 崩溃
+                    val cleaned = songs.filter { it.id > 0 }.distinctBy { it.id }
                     _detail.value = PlaylistDetailUiState(
                         title = target.title,
-                        coverUrl = target.coverUrl,
-                        subtitle = if (songs.isEmpty()) target.subtitle else "${songs.size} 首 · ${target.title}",
-                        songs = songs,
+                        coverUrl = target.coverUrl ?: cleaned.firstOrNull()?.coverUrl,
+                        subtitle = if (cleaned.isEmpty()) target.subtitle
+                        else "${cleaned.size} 首 · ${target.title}",
+                        songs = cleaned,
                     )
                 }
                 .onFailure { e ->
@@ -280,3 +366,6 @@ class HomeViewModel(
         _detail.value = null
     }
 }
+
+/** 「我喜欢的音乐」在个别账号响应里可能没有 specialType，用名称兜底识别。 */
+private const val LIKED_NAME = "喜欢的音乐"

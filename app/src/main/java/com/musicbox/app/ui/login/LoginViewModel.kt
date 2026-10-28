@@ -3,6 +3,7 @@ package com.musicbox.app.ui.login
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.musicbox.app.data.SessionStore
+import com.musicbox.app.player.sharedSongStreamCache
 import com.musicbox.app.source.SourceError
 import com.musicbox.app.source.netease.LoginApi
 import com.musicbox.app.source.netease.QrPollResult
@@ -104,6 +105,8 @@ class LoginViewModel(
                     }
                     is QrPollResult.Success -> {
                         sessionStore.save(r.musicU, r.csrf, null)
+                        // 游客态取流拿到的多是 30 秒试听地址，登录后必须作废重取
+                        sharedSongStreamCache.clear()
                         _state.value = LoginUiState.Success(null)
                         // 昵称 / 头像 / 累计听歌是可选增强，单独再取一次；失败不影响登录成功
                         api.fetchAccount(r.musicU, r.csrf).getOrNull()?.let { profile ->

@@ -93,6 +93,16 @@ fun LyricTimeline.currentLineTextAt(positionMs: Long, includeTranslation: Boolea
 }
 
 /**
+ * 播放页歌词预览的第二排：当前行译文（纯函数）。
+ * 无译文、译文空白或关闭译文时返回空串；原文由 [currentLineTextAt] 提供。
+ */
+fun LyricTimeline.currentTranslationAt(positionMs: Long, includeTranslation: Boolean): String {
+    if (!includeTranslation) return ""
+    val translation = lineAt(positionMs)?.translation
+    return if (!translation.isNullOrBlank()) translation else ""
+}
+
+/**
  * 桌面歌词应显示的"下一行文本"（纯函数，便于单测）。
  * - 取当前行下标的**下一行**；下一行不存在（末行 / 空时间轴）返回空串；
  * - 当前行不存在（[indexAt] 为 -1，即第一行开始之前）时按第 0 行处理，

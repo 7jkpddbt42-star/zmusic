@@ -35,6 +35,17 @@ class SongStreamCacheTest {
     }
 
     @Test
+    fun `clear drops entries after session change`() {
+        val cache = SongStreamCache()
+        cache.put(1L, trial)
+
+        cache.clear()
+
+        assertNull(cache.get(1L))
+        assertEquals(0, cache.size())
+    }
+
+    @Test
     fun `evicts least recently used entry beyond capacity`() {
         val cache = SongStreamCache(maxEntries = 2)
         cache.put(1L, full)

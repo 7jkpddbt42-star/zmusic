@@ -263,7 +263,7 @@ private fun QueuePanel(
                     modifier = Modifier.weight(1f),
                 )
                 Text(
-                    text = "${queue.size} 首 · ${if (expanded) "下滑收起" else "上滑展开"}",
+                    text = "${queue.size} 首",
                     style = MaterialTheme.typography.labelSmall,
                     color = Color.White.copy(alpha = 0.56f),
                 )

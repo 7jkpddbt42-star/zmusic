@@ -5,7 +5,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -14,7 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -38,32 +37,33 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.musicbox.app.model.Song
 import com.musicbox.app.ui.components.Entrance
 import com.musicbox.app.ui.components.GlassEmptyState
+import com.musicbox.app.ui.components.GlassListPanel
 import com.musicbox.app.ui.components.GlassPanel
 import com.musicbox.app.ui.components.MusicIcons
-import com.musicbox.app.ui.components.PageHeader
 import com.musicbox.app.ui.components.liquidglass.LocalGlassBackdrop
 import com.musicbox.app.ui.components.liquidglass.liquidGlass
+import com.musicbox.app.ui.player.formatTime
 import com.musicbox.app.ui.theme.ArtworkImage
 import com.musicbox.app.ui.theme.THUMB_EDGE_PX
 
 /**
- * 搜索页（重绘版）。
+ * 搜索页。
  *
- * 视觉：
- * - 页头 + 玻璃搜索胶囊（含自有线性图标）+ 实心主题色搜索键；
- * - 结果整体放进一块玻璃面板，行内显示封面、歌名与歌手；
- * - 空态、加载态、错误态各自有独立形态，不再是一行裸文字。
+ * 视觉：小字标签 + 大标题 → 玻璃搜索胶囊 → 结果整块玻璃面板。
+ * 空态不再是裸文字，而是一张带热门关键词的玻璃卡，点词即搜。
  *
- * 性能：列表滚动不读取逐帧状态，搜索状态变化才重组，避免滚动掉帧。
+ * 性能：列表用 LazyColumn；滚动过程不读取任何逐帧状态，只有搜索状态变化才重组。
  */
 @Composable
 fun SearchScreen(
     state: SearchUiState,
     onQueryChange: (String) -> Unit,
     onSearch: () -> Unit,
+    onQuickSearch: (String) -> Unit,
     nowPlayingSongId: Long?,
     onSongClick: (Int) -> Unit,
     modifier: Modifier = Modifier,
@@ -83,14 +83,7 @@ fun SearchScreen(
             .padding(horizontal = 16.dp),
     ) {
         Entrance(index = 0) {
-            PageHeader(
-                title = "发现音乐",
-                subtitle = if (state.searched && state.results.isNotEmpty()) {
-                    "找到 ${state.results.size} 首 · 网易云曲库"
-                } else {
-                    "搜索网易云曲库，选中即可试听"
-                },
-            )
+            SearchHeader(state)
         }
 
         Entrance(index = 1) {
@@ -104,33 +97,28 @@ fun SearchScreen(
 
         Entrance(index = 2, modifier = Modifier.weight(1f)) {
             Box(modifier = Modifier.fillMaxSize().padding(top = 14.dp)) {
-            val showEmpty = state.searched && !state.loading && state.message == null &&
-                (state.results.isEmpty() || state.noRealMatch)
+                val showEmpty = state.searched && !state.loading && state.message == null &&
+                    (state.results.isEmpty() || state.noRealMatch)
 
-            when {
-                state.loading -> SearchLoading()
-                state.message != null -> SearchMessage(state.message)
+                when {
+                    state.loading -> SearchLoading()
+                    state.message != null -> SearchMessage(state.message)
 
-                showEmpty -> Column(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.Center,
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    GlassEmptyState(
-                        icon = MusicIcons.Search,
-                        title = if (state.noRealMatch) "没有找到相关结果" else "没有找到结果",
-                        description = "换个关键词试试，歌名、歌手或专辑都可以",
-                    )
-                }
+                    showEmpty -> Column(
+                        modifier = Modifier.fillMaxSize().padding(bottom = 48.dp),
+                        verticalArrangement = Arrangement.Center,
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        GlassEmptyState(
+                            icon = MusicIcons.Search,
+                            title = if (state.noRealMatch) "没有找到相关结果" else "没有找到结果",
+                            description = "换个关键词试试，歌名、歌手或专辑都可以",
+                        )
+                    }
 
-                state.results.isNotEmpty() -> GlassPanel(
-                    modifier = Modifier.fillMaxSize(),
-                    shape = RoundedCornerShape(26.dp),
-                ) {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
-                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                    state.results.isNotEmpty() -> GlassListPanel(
+                        modifier = Modifier.fillMaxSize().padding(bottom = 8.dp),
+                        shape = RoundedCornerShape(26.dp),
                     ) {
                         item(key = "resultHeader") {
                             Row(
@@ -155,7 +143,10 @@ fun SearchScreen(
                                 )
                             }
                         }
-                        itemsIndexed(state.results, key = { _, song -> song.id }) { index, song ->
+                        itemsIndexed(
+                            state.results,
+                            key = { index, song -> "$index-${song.id}" },
+                        ) { index, song ->
                             SongResultRow(
                                 song = song,
                                 isCurrent = song.id == nowPlayingSongId,
@@ -163,35 +154,43 @@ fun SearchScreen(
                             )
                         }
                     }
-                }
 
-                else -> Column(
-                    modifier = Modifier.fillMaxSize().padding(bottom = 48.dp),
-                    verticalArrangement = Arrangement.Center,
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    Icon(
-                        imageVector = MusicIcons.MusicNote,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
-                        modifier = Modifier.size(38.dp),
-                    )
-                    Text(
-                        text = "搜索你想听的歌",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.78f),
-                        modifier = Modifier.padding(top = 12.dp),
-                    )
-                    Text(
-                        text = "输入关键词后回车，或点右侧按钮",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
-                        modifier = Modifier.padding(top = 4.dp),
-                    )
+                    else -> SearchIdle(onQuickSearch = onQuickSearch)
                 }
-            }
             }
         }
+    }
+}
+
+/** 页头：小字标签 + 大标题 + 动态一行说明。 */
+@Composable
+private fun SearchHeader(state: SearchUiState) {
+    val primary = MaterialTheme.colorScheme.primary
+    Column(modifier = Modifier.fillMaxWidth().padding(top = 20.dp, bottom = 14.dp)) {
+        Text(
+            text = "探索",
+            style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 4.sp),
+            color = primary.copy(alpha = 0.78f),
+        )
+        Text(
+            text = "搜索音乐",
+            style = MaterialTheme.typography.headlineLarge.copy(
+                fontSize = 32.sp,
+                letterSpacing = (-0.6).sp,
+            ),
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(top = 6.dp),
+        )
+        Text(
+            text = when {
+                state.loading -> "正在检索网易云曲库…"
+                state.searched && state.results.isNotEmpty() -> "找到 ${state.results.size} 首 · 网易云曲库"
+                else -> "歌名、歌手或专辑，一首歌的距离"
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 6.dp),
+        )
     }
 }
 
@@ -206,14 +205,14 @@ private fun SearchField(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(54.dp)
+            .height(56.dp)
             .liquidGlass(
                 backdrop = LocalGlassBackdrop.current,
-                shape = RoundedCornerShape(27.dp),
+                shape = RoundedCornerShape(28.dp),
                 blurRadius = 6.dp,
                 tint = Color.White.copy(alpha = 0.08f),
             )
-            .padding(start = 16.dp, end = 6.dp),
+            .padding(start = 17.dp, end = 7.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
@@ -255,7 +254,7 @@ private fun SearchField(
         }
         Box(
             modifier = Modifier
-                .size(42.dp)
+                .size(44.dp)
                 .clip(CircleShape)
                 .background(MaterialTheme.colorScheme.primary)
                 .clickable(onClick = onSubmit),
@@ -265,9 +264,90 @@ private fun SearchField(
                 imageVector = MusicIcons.Search,
                 contentDescription = "搜索",
                 tint = MaterialTheme.colorScheme.onPrimary,
-                modifier = Modifier.size(19.dp),
+                modifier = Modifier.size(20.dp),
             )
         }
+    }
+}
+
+/** 空态：玻璃卡 + 提示 + 热门关键词，点词直接搜。 */
+@Composable
+private fun SearchIdle(onQuickSearch: (String) -> Unit) {
+    val primary = MaterialTheme.colorScheme.primary
+    Column(
+        modifier = Modifier.fillMaxSize().padding(bottom = 48.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        GlassPanel(modifier = Modifier.fillMaxWidth()) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 26.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(56.dp)
+                        .background(primary.copy(alpha = 0.12f), CircleShape),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = MusicIcons.Search,
+                        contentDescription = null,
+                        tint = primary,
+                        modifier = Modifier.size(26.dp),
+                    )
+                }
+                Text(
+                    text = "搜索你想听的歌",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(top = 14.dp),
+                )
+                Text(
+                    text = "输入关键词后回车，或点右侧搜索键",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 6.dp),
+                )
+                Text(
+                    text = "热门搜索",
+                    style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.2.sp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                    modifier = Modifier.padding(top = 20.dp, bottom = 10.dp),
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    KeywordChip("周杰伦", onQuickSearch)
+                    KeywordChip("陈奕迅", onQuickSearch)
+                    KeywordChip("告五人", onQuickSearch)
+                }
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.padding(top = 8.dp),
+                ) {
+                    KeywordChip("林俊杰", onQuickSearch)
+                    KeywordChip("邓紫棋", onQuickSearch)
+                    KeywordChip("纯音乐", onQuickSearch)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun KeywordChip(keyword: String, onQuickSearch: (String) -> Unit) {
+    val primary = MaterialTheme.colorScheme.primary
+    Box(
+        modifier = Modifier
+            .clip(CircleShape)
+            .background(primary.copy(alpha = 0.10f))
+            .clickable { onQuickSearch(keyword) }
+            .padding(horizontal = 14.dp, vertical = 7.dp),
+    ) {
+        Text(
+            text = keyword,
+            style = MaterialTheme.typography.labelMedium,
+            color = primary,
+        )
     }
 }
 
@@ -276,7 +356,7 @@ private fun SearchField(
 private fun SearchLoading() {
     GlassPanel(modifier = Modifier.fillMaxWidth()) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 16.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 18.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             CircularProgressIndicator(
@@ -284,11 +364,18 @@ private fun SearchLoading() {
                 strokeWidth = 2.dp,
                 color = MaterialTheme.colorScheme.primary,
             )
-            Text(
-                text = "正在搜索…",
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(start = 12.dp),
-            )
+            Column(modifier = Modifier.padding(start = 12.dp)) {
+                Text(
+                    text = "正在搜索…",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Text(
+                    text = "网易云曲库",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
         }
     }
 }
@@ -319,7 +406,7 @@ private fun SearchMessage(message: String) {
     }
 }
 
-/** 单条搜索结果。 */
+/** 单条搜索结果：封面 + 歌名 + 歌手·专辑 + 时长。 */
 @Composable
 private fun SongResultRow(
     song: Song,
@@ -338,8 +425,8 @@ private fun SongResultRow(
     ) {
         ArtworkImage(
             url = song.coverUrl,
-            modifier = Modifier.size(44.dp),
-            shape = RoundedCornerShape(10.dp),
+            modifier = Modifier.size(46.dp),
+            shape = RoundedCornerShape(11.dp),
             maxEdgePx = THUMB_EDGE_PX,
         )
         Column(modifier = Modifier.weight(1f).padding(horizontal = 10.dp)) {
@@ -360,5 +447,11 @@ private fun SongResultRow(
                 overflow = TextOverflow.Ellipsis,
             )
         }
+        Text(
+            text = formatTime(song.durationMs),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+            modifier = Modifier.padding(horizontal = 8.dp),
+        )
     }
 }

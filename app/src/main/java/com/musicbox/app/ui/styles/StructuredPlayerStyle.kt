@@ -186,10 +186,6 @@ fun StructuredPlayerStyle(
                 )
             }
 
-            if (state.isBuffering) {
-                Text4Buffer()
-            }
-
             Spacer(modifier = Modifier.height(8.dp))
         }
     }
@@ -217,13 +213,4 @@ private fun SkipCircle(
             modifier = Modifier.size(iconSize),
         )
     }
-}
-
-@Composable
-private fun Text4Buffer() {
-    androidx.compose.material3.Text(
-        text = "缓冲中…",
-        style = androidx.compose.material3.MaterialTheme.typography.labelSmall,
-        color = Color.White.copy(alpha = 0.60f),
-    )
 }
