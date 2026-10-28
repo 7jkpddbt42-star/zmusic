@@ -52,6 +52,10 @@ class SettingsRepository(private val store: KeyValueStore) {
     private val _freeSourceEnabled = MutableStateFlow(isFreeSourceEnabledNow())
     val freeSourceEnabled: StateFlow<Boolean> = _freeSourceEnabled.asStateFlow()
 
+    /** 智能过渡：切歌按节拍淡出淡入，默认开启。 */
+    private val _smartTransition = MutableStateFlow(isSmartTransitionEnabledNow())
+    val smartTransition: StateFlow<Boolean> = _smartTransition.asStateFlow()
+
     /** 主题偏好整包暴露：由若干设置 key 组成，UI 只订阅这一个 flow，接线更简单。 */
     private val _themeSpec = MutableStateFlow(readThemeSpec())
     val themeSpec: StateFlow<ThemeSpec> = _themeSpec.asStateFlow()
@@ -113,11 +117,19 @@ class SettingsRepository(private val store: KeyValueStore) {
         _playMode.value = value
     }
 
+    fun setSmartTransition(value: Boolean) {
+        store.putBoolean(KEY_SMART_TRANSITION, value)
+        _smartTransition.value = value
+    }
+
     /**
      * 直接读持久化值。播放服务与界面各自持有 AppContainer，内存里的 StateFlow
      * 不会互相同步，取流侧必须用这个「现读」入口，切换模式才能立刻生效。
      */
     fun isFreeSourceEnabledNow(): Boolean = store.getBoolean(KEY_FREE_SOURCE, false)
+
+    /** 播放服务侧现读「智能过渡」开关，与界面各自持有容器时也能立刻生效。 */
+    fun isSmartTransitionEnabledNow(): Boolean = store.getBoolean(KEY_SMART_TRANSITION, true)
 
     fun setThemeMode(mode: ThemeMode) {
         store.putString(KEY_THEME_MODE, mode.key)
@@ -220,6 +232,7 @@ class SettingsRepository(private val store: KeyValueStore) {
         const val KEY_FALLBACK_URL = "fallback_base_url"
         const val KEY_FREE_SOURCE = "free_source_enabled"
         const val KEY_PLAY_MODE = "play_mode"
+        const val KEY_SMART_TRANSITION = "smart_transition"
         const val KEY_THEME_MODE = "theme_mode"
         const val KEY_SEED_SOURCE = "seed_source"
         const val KEY_FIXED_SEED = "fixed_seed_argb"

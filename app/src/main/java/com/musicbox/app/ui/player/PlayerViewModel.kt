@@ -117,12 +117,13 @@ class PlayerViewModel(
         if (controller.isPlaying) controller.pause() else controller.play()
     }
 
+    /** 下一首 / 上一首：服务侧先淡出再切，新歌从 0 淡入。 */
     fun next() {
-        connection.controller.value?.seekToNextMediaItem()
+        connection.skipWithFade(forward = true)
     }
 
     fun previous() {
-        connection.controller.value?.seekToPreviousMediaItem()
+        connection.skipWithFade(forward = false)
     }
 
     fun seekTo(positionMs: Long) {

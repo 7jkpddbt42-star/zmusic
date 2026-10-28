@@ -2,11 +2,13 @@ package com.musicbox.app.ui.player
 
 import android.content.ComponentName
 import android.content.Context
+import android.os.Bundle
 import androidx.core.content.ContextCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
+import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.ListenableFuture
 import com.musicbox.app.model.PlayMode
@@ -14,6 +16,7 @@ import com.musicbox.app.player.PlaybackService
 import com.musicbox.app.player.PositionSource
 import com.musicbox.app.player.applyTo
 import com.musicbox.app.player.sharedSongStreamCache
+import com.musicbox.app.player.transition.TransitionCommands
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -141,6 +144,25 @@ class PlaybackConnection(
         _controller.value = null
         _state.value = PlaybackUiState()
         scope.cancel()
+    }
+
+    /**
+     * 手动上一首 / 下一首。
+     *
+     * 走服务侧的自定义命令，服务会先淡出再切歌；命令不可用时退回直接跳曲，
+     * 保证旧路径永远可用（例如会话尚未完成握手）。
+     */
+    fun skipWithFade(forward: Boolean) {
+        val controller = _controller.value ?: return
+        val command = SessionCommand(TransitionCommands.ACTION_FADE_SKIP, Bundle.EMPTY)
+        if (controller.availableSessionCommands.contains(command)) {
+            controller.sendCustomCommand(
+                command,
+                Bundle().apply { putBoolean(TransitionCommands.ARG_FORWARD, forward) },
+            )
+        } else {
+            if (forward) controller.seekToNextMediaItem() else controller.seekToPreviousMediaItem()
+        }
     }
 
     /** 等连接就绪。点歌时调用；还没连上就挂起等它连上。 */

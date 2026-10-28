@@ -84,6 +84,7 @@ fun SettingsScreen(
     playerStyle: PlayerStyle,
     fallbackBaseUrl: String,
     freeSourceEnabled: Boolean,
+    smartTransition: Boolean,
     lyricCacheCount: Int,
     themeSpec: ThemeSpec,
     background: BackgroundSpec,
@@ -98,6 +99,7 @@ fun SettingsScreen(
     onPlayerStyle: (PlayerStyle) -> Unit,
     onSaveFallbackUrl: (String) -> Unit,
     onFreeSourceEnabled: (Boolean) -> Unit,
+    onSmartTransition: (Boolean) -> Unit,
     onClearLyricCache: () -> Unit,
     onThemeMode: (ThemeMode) -> Unit,
     onSeedSource: (SeedSource) -> Unit,
@@ -323,6 +325,30 @@ fun SettingsScreen(
                 TextButton(onClick = onResetBackground, modifier = Modifier.padding(top = 4.dp)) {
                     Text("恢复默认")
                 }
+            }
+
+            HorizontalDivider(
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f),
+                modifier = Modifier.padding(vertical = 12.dp),
+            )
+
+            SettingsGroup {
+                Text("播放", style = MaterialTheme.typography.titleMedium)
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("智能过渡", modifier = Modifier.weight(1f))
+                    Switch(checked = smartTransition, onCheckedChange = onSmartTransition)
+                }
+                Text(
+                    "切歌时先淡出再淡入，不再硬切。会分析曲首音频估算 BPM 与片头起点：" +
+                        "淡出 4 拍、淡入 2 拍，片头有静音时从真正出声的位置开始；" +
+                        "手动切换上一首 / 下一首同样生效。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
             }
 
             HorizontalDivider(

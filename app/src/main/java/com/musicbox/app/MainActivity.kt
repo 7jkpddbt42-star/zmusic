@@ -261,6 +261,7 @@ private fun MusicBoxApp(
     val playerStylePref by container.settings.playerStyle.collectAsStateWithLifecycle()
     val fallbackUrl by container.settings.fallbackBaseUrl.collectAsStateWithLifecycle()
     val freeSourceEnabled by container.settings.freeSourceEnabled.collectAsStateWithLifecycle()
+    val smartTransition by container.settings.smartTransition.collectAsStateWithLifecycle()
     val desktopLyricEnabled by container.settings.desktopLyricEnabled.collectAsStateWithLifecycle()
     val desktopLyricFontSp by container.settings.desktopLyricFontSp.collectAsStateWithLifecycle()
     val desktopLyricColorArgb by container.settings.desktopLyricColorArgb.collectAsStateWithLifecycle()
@@ -782,6 +783,7 @@ private fun MusicBoxApp(
             playerStyle = playerStylePref,
             fallbackBaseUrl = fallbackUrl,
             freeSourceEnabled = freeSourceEnabled,
+            smartTransition = smartTransition,
             lyricCacheCount = container.lyricDiskCache.size(),
             themeSpec = spec,
             background = backgroundSpec,
@@ -806,6 +808,7 @@ private fun MusicBoxApp(
                     )
                 }
             },
+            onSmartTransition = container.settings::setSmartTransition,
             onClearLyricCache = {
                 container.lyricDiskCache.clear()
                 showSettings = false
