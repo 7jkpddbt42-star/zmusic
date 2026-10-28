@@ -1,5 +1,6 @@
 package com.musicbox.app.data
 
+import com.musicbox.app.model.PlayMode
 import com.musicbox.app.ui.theme.SeedSource
 import com.musicbox.app.ui.theme.ThemeMode
 import com.musicbox.app.ui.theme.ThemeSpec
@@ -42,6 +43,10 @@ class SettingsRepository(private val store: KeyValueStore) {
 
     private val _fallbackBaseUrl = MutableStateFlow(store.getString(KEY_FALLBACK_URL).orEmpty())
     val fallbackBaseUrl: StateFlow<String> = _fallbackBaseUrl.asStateFlow()
+
+    /** 播放模式：顺序 / 单曲循环 / 随机，重启后沿用上次选择。 */
+    private val _playMode = MutableStateFlow(PlayMode.fromKey(store.getString(KEY_PLAY_MODE)))
+    val playMode: StateFlow<PlayMode> = _playMode.asStateFlow()
 
     /** 免费听歌模式：开 / 关（关=普通模式，只用网易云官方音源）。 */
     private val _freeSourceEnabled = MutableStateFlow(isFreeSourceEnabledNow())
@@ -101,6 +106,11 @@ class SettingsRepository(private val store: KeyValueStore) {
     fun setFreeSourceEnabled(value: Boolean) {
         store.putBoolean(KEY_FREE_SOURCE, value)
         _freeSourceEnabled.value = value
+    }
+
+    fun setPlayMode(value: PlayMode) {
+        store.putString(KEY_PLAY_MODE, value.key)
+        _playMode.value = value
     }
 
     /**
@@ -209,6 +219,7 @@ class SettingsRepository(private val store: KeyValueStore) {
         const val KEY_PLAYER_STYLE = "player_style"
         const val KEY_FALLBACK_URL = "fallback_base_url"
         const val KEY_FREE_SOURCE = "free_source_enabled"
+        const val KEY_PLAY_MODE = "play_mode"
         const val KEY_THEME_MODE = "theme_mode"
         const val KEY_SEED_SOURCE = "seed_source"
         const val KEY_FIXED_SEED = "fixed_seed_argb"

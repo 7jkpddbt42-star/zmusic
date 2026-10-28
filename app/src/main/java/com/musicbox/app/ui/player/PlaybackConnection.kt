@@ -12,6 +12,7 @@ import com.google.common.util.concurrent.ListenableFuture
 import com.musicbox.app.model.PlayMode
 import com.musicbox.app.player.PlaybackService
 import com.musicbox.app.player.PositionSource
+import com.musicbox.app.player.applyTo
 import com.musicbox.app.player.sharedSongStreamCache
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -62,14 +63,19 @@ data class PlaybackUiState(
  * 位置每 250 毫秒采一次：进度条不需要逐帧精度。逐字歌词的逐帧时钟另走
  * [com.musicbox.app.player.PositionSource]（见 FrameClock）。
  */
-class PlaybackConnection(private val context: Context) : PositionSource {
+class PlaybackConnection(
+    private val context: Context,
+    initialMode: PlayMode = PlayMode.ORDER,
+    /** 模式变化回写偏好，重启后沿用上次选择。 */
+    private val onModeChange: (PlayMode) -> Unit = {},
+) : PositionSource {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var future: ListenableFuture<MediaController>? = null
     private var ticker: Job? = null
 
     /** 播放模式。放在连接层而不是 Service：它是 UI 偏好，用不着跨进程。 */
-    val playMode = MutableStateFlow(PlayMode.ORDER)
+    val playMode = MutableStateFlow(initialMode)
 
     private val _controller = MutableStateFlow<MediaController?>(null)
     val controller: StateFlow<MediaController?> = _controller.asStateFlow()
@@ -115,6 +121,15 @@ class PlaybackConnection(private val context: Context) : PositionSource {
             // Context.mainExecutor 需要 API 28，minSdk 是 26，用兼容入口避免低版本崩溃
             { runnable -> ContextCompat.getMainExecutor(context).execute(runnable) },
         )
+    }
+
+    /** 顺序 → 单曲循环 → 随机 轮换：立即作用到播放器并回写偏好。 */
+    fun cyclePlayMode(): PlayMode {
+        val next = playMode.value.next()
+        playMode.value = next
+        controller.value?.let { next.applyTo(it) }
+        onModeChange(next)
+        return next
     }
 
     fun release() {

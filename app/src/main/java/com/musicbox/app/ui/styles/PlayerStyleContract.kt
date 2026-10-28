@@ -5,10 +5,12 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -29,6 +31,7 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.musicbox.app.data.PlayerStyle
+import com.musicbox.app.model.PlayMode
 import com.musicbox.app.ui.components.MusicIcons
 
 /**
@@ -153,23 +156,42 @@ fun LikeButton(
     }
 }
 
-/** 播放模式文字按钮：点击循环切换顺序/单曲/随机。 */
+/** 播放模式按钮：图标 + 文案，点击循环切换顺序/单曲/随机。 */
 @Composable
 fun ModeText(
     modeLabel: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    foreground: Color = Color.White.copy(alpha = 0.72f),
+    foreground: Color = Color.White.copy(alpha = 0.90f),
     fontSize: TextUnit = 12.sp,
 ) {
-    Text(
-        text = modeLabel,
-        style = MaterialTheme.typography.labelMedium.copy(fontSize = fontSize),
-        color = foreground,
-        maxLines = 1,
+    val mode = PlayMode.fromLabel(modeLabel)
+    Row(
         modifier = modifier
             .clip(CircleShape)
             .clickableNoRipple(onClick)
-            .padding(horizontal = 6.dp, vertical = 4.dp),
-    )
+            .padding(horizontal = 8.dp, vertical = 5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = when (mode) {
+                PlayMode.ORDER -> MusicIcons.Repeat
+                PlayMode.REPEAT_ONE -> MusicIcons.RepeatOne
+                PlayMode.SHUFFLE -> MusicIcons.Shuffle
+            },
+            contentDescription = "播放模式：$modeLabel",
+            tint = foreground,
+            modifier = Modifier.size(14.dp),
+        )
+        Spacer(modifier = Modifier.width(5.dp))
+        Text(
+            text = modeLabel,
+            style = MaterialTheme.typography.labelMedium.copy(
+                fontSize = fontSize,
+                letterSpacing = 0.2.sp,
+            ),
+            color = foreground,
+            maxLines = 1,
+        )
+    }
 }

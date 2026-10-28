@@ -271,6 +271,66 @@ object MusicIcons {
         }
     }
 
+    /** 顺序播放：上下两条带箭头的回路。 */
+    val Repeat: ImageVector = strokeIcon("music_repeat") {
+        line {
+            // 上排：左向箭头 + 横线
+            moveTo(8.4f, 5.6f)
+            lineTo(6.2f, 7.8f)
+            lineTo(8.4f, 10f)
+            moveTo(6.2f, 7.8f)
+            lineTo(17.2f, 7.8f)
+            // 下排：右向箭头 + 横线
+            moveTo(15.6f, 14f)
+            lineTo(17.8f, 16.2f)
+            lineTo(15.6f, 18.4f)
+            moveTo(17.8f, 16.2f)
+            lineTo(6.8f, 16.2f)
+        }
+    }
+
+    /** 单曲循环：回路中间插一个「1」。 */
+    val RepeatOne: ImageVector = strokeIcon("music_repeat_one") {
+        line {
+            moveTo(8.4f, 5.6f)
+            lineTo(6.2f, 7.8f)
+            lineTo(8.4f, 10f)
+            moveTo(6.2f, 7.8f)
+            lineTo(17.2f, 7.8f)
+            moveTo(15.6f, 14f)
+            lineTo(17.8f, 16.2f)
+            lineTo(15.6f, 18.4f)
+            moveTo(17.8f, 16.2f)
+            lineTo(6.8f, 16.2f)
+        }
+        line(1.7f) {
+            moveTo(11.1f, 10.6f)
+            lineTo(12.4f, 10.2f)
+            lineTo(12.4f, 13.6f)
+        }
+    }
+
+    /** 随机播放：两条交叉并各自带箭头的连线。 */
+    val Shuffle: ImageVector = strokeIcon("music_shuffle") {
+        line {
+            moveTo(4.6f, 7f)
+            lineTo(7.8f, 7f)
+            curveTo(10.6f, 7f, 12.4f, 17f, 15.4f, 17f)
+            lineTo(17.6f, 17f)
+            moveTo(15.2f, 14.6f)
+            lineTo(17.6f, 17f)
+            lineTo(15.2f, 19.4f)
+
+            moveTo(4.6f, 17f)
+            lineTo(7.8f, 17f)
+            curveTo(10.6f, 17f, 12.4f, 7f, 15.4f, 7f)
+            lineTo(17.6f, 7f)
+            moveTo(15.2f, 4.6f)
+            lineTo(17.6f, 7f)
+            lineTo(15.2f, 9.4f)
+        }
+    }
+
     /** 空状态：音符。 */
     val MusicNote: ImageVector = strokeIcon("music_note") {
         solid {

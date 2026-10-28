@@ -130,13 +130,10 @@ fun MinimalPlayerStyle(
                 skipButtonSize = 52.dp,
                 skipIconSize = 32.dp,
                 leading = {
-                    Text(
-                        text = modeLabel,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = Color.White.copy(alpha = 0.72f),
-                        modifier = Modifier
-                            .padding(horizontal = 6.dp)
-                            .clickableNoRipple(actions.onCycleMode),
+                    ModeText(
+                        modeLabel = modeLabel,
+                        onClick = actions.onCycleMode,
+                        foreground = Color.White.copy(alpha = 0.72f),
                     )
                 },
                 trailing = {

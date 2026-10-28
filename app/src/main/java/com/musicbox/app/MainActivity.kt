@@ -178,8 +178,14 @@ private fun MusicBoxApp(
 ) {
     val context = LocalContext.current
 
-    // MediaController 的连接随 Composition 建立与释放
-    val connection = remember { PlaybackConnection(context.applicationContext) }
+    // MediaController 的连接随 Composition 建立与释放；播放模式用上次的选择初始化
+    val connection = remember {
+        PlaybackConnection(
+            context.applicationContext,
+            initialMode = container.settings.playMode.value,
+            onModeChange = container.settings::setPlayMode,
+        )
+    }
     DisposableEffect(Unit) {
         connection.connect()
         onDispose { connection.release() }

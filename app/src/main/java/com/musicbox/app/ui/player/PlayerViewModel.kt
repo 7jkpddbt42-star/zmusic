@@ -134,12 +134,9 @@ class PlayerViewModel(
         connection.controller.value?.seekTo(index, 0L)
     }
 
-    /** 顺序 → 单曲循环 → 随机 轮换，切换后立刻作用到播放器。 */
+    /** 顺序 → 单曲循环 → 随机 轮换，切换后立刻作用到播放器，并记住选择。 */
     fun cyclePlayMode() {
-        val controller = connection.controller.value ?: return
-        val next = connection.playMode.value.next()
-        next.applyTo(controller)
-        connection.playMode.value = next
+        val next = connection.cyclePlayMode()
         _message.value = "播放模式：${next.label}"
     }
 

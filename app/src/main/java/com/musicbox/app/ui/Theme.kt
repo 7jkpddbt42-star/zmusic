@@ -8,6 +8,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.musicbox.app.ui.theme.AppTypography
 import com.musicbox.app.ui.theme.ThemeMode
 import com.musicbox.app.ui.theme.ThemeSpec
 import com.musicbox.app.ui.theme.buildScheme
@@ -43,6 +44,7 @@ internal fun MusicBoxTheme(spec: ThemeSpec, seed: Color?, content: @Composable (
     MaterialTheme(
         colorScheme = buildScheme(effectiveSeed, dark),
         shapes = MusicBoxShapes,
+        typography = AppTypography,
         content = content,
     )
 }
