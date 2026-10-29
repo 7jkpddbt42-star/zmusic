@@ -109,33 +109,34 @@ fun LiquidGlassPlayerStyle(
                         contentAlignment = Alignment.Center,
                     ) {
                         // 扣掉标题、歌词胶囊与间距后按剩余高度收敛，小屏也不会溢出
-                        val coverSize = (maxWidth * 0.72f)
+                        val coverSize = (maxWidth * 0.74f)
                             .coerceAtMost(maxHeight - 150.dp)
-                            .coerceAtMost(320.dp)
+                            .coerceAtMost(330.dp)
 
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             PlayerArtwork(
                                 artworkUrl = state.artworkUrl,
                                 onArtworkLoaded = actions.onArtworkLoaded,
                                 modifier = Modifier.size(coverSize),
-                                shape = RoundedCornerShape(32.dp),
+                                shape = RoundedCornerShape(34.dp),
                                 haloColor = MaterialTheme.colorScheme.primary,
-                                elevation = 20.dp,
+                                elevation = 28.dp,
                                 onClick = actions.onOpenLyric,
                             )
 
-                            Spacer(modifier = Modifier.height(18.dp))
+                            Spacer(modifier = Modifier.height(20.dp))
 
                             MediaHeader(
                                 title = state.title.orEmpty(),
                                 subtitle = state.artist.orEmpty(),
                                 foreground = Color.White,
+                                secondaryForeground = Color.White.copy(alpha = 0.62f),
                                 isTrial = state.isTrial,
-                                titleSize = 21.sp,
-                                subtitleSize = 14.sp,
+                                titleSize = 23.sp,
+                                subtitleSize = 13.sp,
                             )
 
-                            Spacer(modifier = Modifier.height(10.dp))
+                            Spacer(modifier = Modifier.height(12.dp))
 
                             LyricPreviewPill(
                                 lyricLine = lyricLine,
@@ -183,11 +184,11 @@ fun LiquidGlassPlayerStyle(
                             foreground = Color.White,
                             playBackground = Color.Transparent,
                             playForeground = Color.White,
-                            playSize = 64.dp,
+                            playSize = 66.dp,
                             playIconSize = 30.dp,
-                            skipButtonSize = 46.dp,
+                            skipButtonSize = 48.dp,
                             skipIconSize = 28.dp,
-                            spacing = 18.dp,
+                            spacing = 20.dp,
                             leading = {
                                 ModeText(
                                     modeLabel = modeLabel,
@@ -209,7 +210,7 @@ fun LiquidGlassPlayerStyle(
                                     backdrop = controlBarGlass,
                                     modifier = Modifier.fillMaxSize(),
                                     shape = CircleShape,
-                                    tint = Color.White.copy(alpha = 0.18f),
+                                    tint = Color.White.copy(alpha = 0.22f),
                                     blurRadius = 4.dp,
                                     shadow = false,
                                 ) {
@@ -233,7 +234,7 @@ fun LiquidGlassPlayerStyle(
                             foreground = Color.White.copy(alpha = 0.84f),
                             iconSize = 18.dp,
                             itemSize = 38.dp,
-                            spacing = 10.dp,
+                            spacing = 16.dp,
                         )
                     }
                 }

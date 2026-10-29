@@ -43,6 +43,7 @@ fun PlayerBackdrop(
     isPlaying: Boolean = false,
     coverBlur: Boolean = false,
     glassBackdrop: PlayerGlassBackdrop? = null,
+    backgroundModifier: Modifier = Modifier,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val blurRadius: Dp = LocalPlayerBackgroundBlur.current
@@ -50,6 +51,7 @@ fun PlayerBackdrop(
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                .then(backgroundModifier)
                 .then(
                     if (glassBackdrop != null) {
                         Modifier.playerGlassSource(glassBackdrop)

@@ -43,7 +43,6 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -57,10 +56,10 @@ import com.musicbox.app.lyric.LyricWord
 import com.musicbox.app.lyric.wordProgress
 import com.musicbox.app.player.PositionSource
 import com.musicbox.app.ui.components.MusicIcons
-import com.musicbox.app.ui.components.liquidglass.GlassAmbientBackdrop
 import com.musicbox.app.ui.components.liquidglass.glassBackdropSource
 import com.musicbox.app.ui.components.liquidglass.liquidGlass
 import com.musicbox.app.ui.components.liquidglass.rememberGlassBackdrop
+import com.musicbox.app.ui.components.player.PlayerBackdrop
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlin.math.abs
@@ -76,7 +75,11 @@ private val FocusLineStyle = TextStyle(
     letterSpacing = 0.3.sp,
 )
 
-private val FocusTranslationStyle = TextStyle(fontSize = 13.sp, lineHeight = 20.sp)
+/** 当前行的译文：比正文小一号但保证清晰可读（英文歌词的中文翻译尤其需要）。 */
+private val FocusTranslationStyle = TextStyle(fontSize = 16.sp, lineHeight = 24.sp)
+
+/** 罗马音：辅助信息，保持在译文下一档。 */
+private val FocusRomajiStyle = TextStyle(fontSize = 14.sp, lineHeight = 20.sp)
 
 /**
  * 逐字歌词页。动画由 [rememberFramePosition] 的逐帧时钟驱动（设计文档 §5.2），
@@ -104,6 +107,7 @@ internal fun LyricScreen(
     showTranslation: Boolean,
     showRomaji: Boolean,
     lyricStyle: LyricStyle,
+    isPlaying: Boolean,
     onToggleTranslation: () -> Unit,
     onToggleRomaji: () -> Unit,
     onSeek: (Long) -> Unit,
@@ -126,18 +130,18 @@ internal fun LyricScreen(
                 onClick = onCollapse,
             ),
     ) {
-        // 背景源层：真实背景 + 压暗遮罩，视频播放时玻璃模糊逐帧更新；
-        // 不再使用纯渐变，否则模糊与折射不可见
-        GlassAmbientBackdrop(
+        // 背景直接复用播放页的 [PlayerBackdrop]：同一套「真实背景 → 压暗 → 渐变 → 粒子」管线，
+        // 因此封面模糊半径、遮罩浓度、粒子都与播放页完全一致，只是内容换成歌词。
+        // 背景层单独挂 glassBackdropSource，玻璃胶囊采到的是背景而不是自己。
+        PlayerBackdrop(
             background = background,
             artworkUrl = artworkUrl,
-            scrim = Color.Black.copy(alpha = 0.62f),
-            coverBlurRadius = 3.dp,
-            modifier = Modifier
-                .fillMaxSize()
-                .glassBackdropSource(backdrop),
-        )
-        Column(
+            source = source,
+            isPlaying = isPlaying,
+            scrim = 0.46f,
+            backgroundModifier = Modifier.glassBackdropSource(backdrop),
+        ) {
+            Column(
             modifier = Modifier
                 .fillMaxSize()
                 .statusBarsPadding()
@@ -237,6 +241,7 @@ internal fun LyricScreen(
                     )
                 }
             }
+        }
         }
     }
 }
@@ -421,7 +426,7 @@ private fun FocusedLyricRow(
         if (showRomaji && !line.romaji.isNullOrBlank()) {
             Text(
                 text = line.romaji!!,
-                style = FocusTranslationStyle,
+                style = FocusRomajiStyle,
                 color = Ink.copy(alpha = 0.55f),
                 textAlign = TextAlign.Center,
                 modifier = Modifier
@@ -543,7 +548,7 @@ private fun ClassicLyricLineRow(
         if (showTranslation && !line.translation.isNullOrBlank()) {
             Text(
                 text = line.translation!!,
-                style = MaterialTheme.typography.bodySmall,
+                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 15.sp, lineHeight = 22.sp),
                 color = Ink.copy(alpha = if (isActive) 0.9f else 0.5f),
                 modifier = Modifier.padding(top = 2.dp),
             )
@@ -562,13 +567,12 @@ private fun ClassicLyricLineRow(
 /**
  * 一个词的逐字填充：暗底 + 亮面（亮面按进度裁剪）。
  *
- * 当前行（[livePosition] 非空）的 progress 在 graphicsLayer / drawWithContent 的
- * lambda 里逐帧读取——这两个阶段失效不会触发重组，只重绘当前词；
- * 非当前行使用调用方给定的静态进度（已唱完 = 1，未唱 = 0），完全不参与逐帧刷新。
+ * 当前行（[livePosition] 非空）的 progress 在 drawWithContent 的 lambda 里逐帧读取——
+ * 只重绘当前词，不触发重组；非当前行使用调用方给定的静态进度（已唱完 = 1，未唱 = 0），
+ * 完全不参与逐帧刷新。
  *
- * 当前行额外做逐字"上浮 + 放大"——同样由 progress 每帧驱动，
- * 严禁使用 animateFloatAsState（会丢毫秒精度）。变换加在包住
- * 「暗底 + 亮面」两层文字的外层 Box 上，保证两层同步位移、不错位。
+ * 刻意不做逐字上浮/放大：字体基线逐帧位移会整行抖动，看起来"跳"。
+ * 逐字效果只保留颜色填充，视觉上更稳。
  */
 @Composable
 private fun KaraokeWord(
@@ -580,23 +584,7 @@ private fun KaraokeWord(
     style: TextStyle,
     alpha: Float,
 ) {
-    // 上浮幅度约 0.25em：style.fontSize.value 为 sp 数值
-    val density = LocalDensity.current
-    val risePx = style.fontSize.value * density.density * density.fontScale * 0.25f
-
-    Box(
-        modifier = if (livePosition != null) {
-            Modifier.graphicsLayer {
-                val progress = wordProgress(livePosition.value, word)
-                translationY = -risePx * progress
-                val s = 1f + 0.06f * progress
-                scaleX = s
-                scaleY = s
-            }
-        } else {
-            Modifier
-        },
-    ) {
+    Box {
         Text(
             text = word.text,
             style = style,

@@ -1,5 +1,6 @@
 package com.musicbox.app.ui.styles
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -9,13 +10,18 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -77,9 +83,10 @@ fun MinimalPlayerStyle(
                 PlayerArtwork(
                     artworkUrl = state.artworkUrl,
                     onArtworkLoaded = actions.onArtworkLoaded,
-                    modifier = Modifier.fillMaxWidth(0.82f).aspectRatio(1f),
-                    shape = RoundedCornerShape(26.dp),
+                    modifier = Modifier.fillMaxWidth(0.86f).aspectRatio(1f),
+                    shape = RoundedCornerShape(32.dp),
                     haloColor = MaterialTheme.colorScheme.primary,
+                    elevation = 30.dp,
                     onClick = actions.onOpenLyric,
                 )
             }
@@ -88,12 +95,13 @@ fun MinimalPlayerStyle(
                 title = state.title.orEmpty(),
                 subtitle = state.artist.orEmpty(),
                 foreground = Color.White,
+                secondaryForeground = Color.White.copy(alpha = 0.62f),
                 isTrial = state.isTrial,
-                titleSize = 20.sp,
-                subtitleSize = 14.sp,
+                titleSize = 22.sp,
+                subtitleSize = 13.sp,
             )
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
             LyricPreviewPill(
                 lyricLine = lyricLine,
@@ -102,7 +110,7 @@ fun MinimalPlayerStyle(
                 translation = lyricTranslation,
             )
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(22.dp))
 
             ProgressSection(
                 source = source,
@@ -110,12 +118,14 @@ fun MinimalPlayerStyle(
                 positionMs = state.positionMs,
                 onSeek = actions.onSeek,
                 foreground = Color.White,
-                trackHeight = 2.5.dp,
-                thumbRadius = 4.dp,
+                trackHeight = 3.dp,
+                thumbRadius = 5.dp,
+                timeStyle = MaterialTheme.typography.labelMedium,
+                timeAlpha = 0.56f,
                 timePlacement = ProgressTimePlacement.Inline,
             )
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             TransportControls(
                 isPlaying = state.isPlaying,
@@ -123,12 +133,35 @@ fun MinimalPlayerStyle(
                 onPrevious = actions.onPrevious,
                 onNext = actions.onNext,
                 foreground = Color.White,
-                playBackground = Color.White,
                 playForeground = Color.Black,
-                playSize = 72.dp,
+                playSize = 74.dp,
                 playIconSize = 34.dp,
                 skipButtonSize = 52.dp,
                 skipIconSize = 32.dp,
+                skipBackground = Color.White.copy(alpha = 0.06f),
+                // 播放键：不是一块死白，而是带高光的浅渐变圆片 + 柔和外发光，
+                // 在深色背景上更像一枚实体按键
+                playContainer = { content ->
+                    Box(
+                        modifier = Modifier
+                            .size(74.dp)
+                            .shadow(
+                                elevation = 20.dp,
+                                shape = CircleShape,
+                                ambientColor = Color.White.copy(alpha = 0.22f),
+                                spotColor = Color.White.copy(alpha = 0.26f),
+                            )
+                            .clip(CircleShape)
+                            .background(
+                                Brush.linearGradient(
+                                    listOf(Color.White, Color(0xFFE6E6EC)),
+                                ),
+                            ),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        content()
+                    }
+                },
                 leading = {
                     ModeText(
                         modeLabel = modeLabel,
@@ -144,20 +177,20 @@ fun MinimalPlayerStyle(
                 },
             )
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
             SecondaryActions(
                 onOpenLyric = actions.onOpenLyric,
                 onOpenQueue = actions.onOpenQueue,
                 onOpenStyleSwitcher = actions.onOpenStyleSwitcher,
                 onNotify = actions.onNotify,
-                foreground = Color.White.copy(alpha = 0.86f),
+                foreground = Color.White.copy(alpha = 0.82f),
                 iconSize = 19.dp,
                 itemSize = 40.dp,
-                spacing = 14.dp,
+                spacing = 16.dp,
             )
 
-            Spacer(modifier = Modifier.height(6.dp))
+            Spacer(modifier = Modifier.height(8.dp))
         }
     }
 }

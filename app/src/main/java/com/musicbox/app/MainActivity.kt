@@ -22,6 +22,8 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -55,6 +57,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
@@ -684,11 +687,24 @@ private fun MusicBoxApp(
                 val playerState by playerVm.state.collectAsStateWithLifecycle()
                 // 不透明底色：播放页 ↔ 歌词页交叉淡化时不会透出下面的主界面
                 Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
-                    // 播放页与歌词页互斥，切换时淡入淡出（不做横向滑动）
-                    AnimatedVisibility(
-                        visible = !showLyric,
-                        enter = fadeIn(tween(300)),
-                        exit = fadeOut(tween(240)),
+                    // 播放页 ⇄ 歌词页：整层交叉淡化，播放页 UI 慢慢退场、歌词页慢慢浮现。
+                    // 用显式 alpha 过渡而不是两个 AnimatedVisibility，退场一侧在动画期间
+                    // 始终留在组合里，不会出现中途被抽走导致的闪断。
+                    val lyricFraction by animateFloatAsState(
+                        targetValue = if (showLyric) 1f else 0f,
+                        animationSpec = tween(durationMillis = 420, easing = FastOutSlowInEasing),
+                        label = "lyricCrossfade",
+                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer {
+                                alpha = 1f - lyricFraction
+                                // 极轻微后退，让歌词页看起来浮在播放页之上
+                                val scale = 1f - 0.02f * lyricFraction
+                                scaleX = scale
+                                scaleY = scale
+                            },
                     ) {
                         PlayerScreen(
                             state = playerState,
@@ -702,31 +718,34 @@ private fun MusicBoxApp(
                             actions = playerActions,
                         )
                     }
-                    // 歌词页：与播放页交叉淡化
-                    AnimatedVisibility(
-                        visible = showLyric,
-                        enter = fadeIn(tween(320)),
-                        exit = fadeOut(tween(240)),
-                    ) {
-                        LyricScreen(
-                            state = lyricState,
-                            source = connection,
-                            title = playState.title,
-                            artist = playState.artist,
-                            background = backgroundSpec,
-                            artworkUrl = playState.artworkUrl,
-                            showTranslation = showTranslationPref,
-                            showRomaji = showRomajiPref,
-                            lyricStyle = lyricStylePref,
-                            onToggleTranslation = {
-                                container.settings.setShowTranslation(!showTranslationPref)
-                            },
-                            onToggleRomaji = {
-                                container.settings.setShowRomaji(!showRomajiPref)
-                            },
-                            onSeek = playerVm::seekTo,
-                            onCollapse = { showLyric = false },
-                        )
+                    // 歌词页：首帧淡入；关闭动画结束后才卸载，避免歌词列表状态被反复重建
+                    if (showLyric || lyricFraction > 0f) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .graphicsLayer { alpha = lyricFraction },
+                        ) {
+                            LyricScreen(
+                                state = lyricState,
+                                source = connection,
+                                title = playState.title,
+                                artist = playState.artist,
+                                background = backgroundSpec,
+                                artworkUrl = playState.artworkUrl,
+                                showTranslation = showTranslationPref,
+                                showRomaji = showRomajiPref,
+                                lyricStyle = lyricStylePref,
+                                isPlaying = playState.isPlaying,
+                                onToggleTranslation = {
+                                    container.settings.setShowTranslation(!showTranslationPref)
+                                },
+                                onToggleRomaji = {
+                                    container.settings.setShowRomaji(!showRomajiPref)
+                                },
+                                onSeek = playerVm::seekTo,
+                                onCollapse = { showLyric = false },
+                            )
+                        }
                     }
                 }
             }
