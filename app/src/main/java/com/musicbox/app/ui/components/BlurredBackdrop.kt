@@ -34,6 +34,9 @@ private const val LOW_RES_EDGE = 24
 /** 切歌时背景交叉淡入淡出的时长。 */
 private const val CROSSFADE_MS = 720
 
+/** 从「还没有封面」到「拿到第一张封面」的淡入时长。 */
+private const val FIRST_FADE_MS = 620
+
 /**
  * 全屏毛玻璃背景层：封面放大铺满 → 模糊 → 暗化/染色遮罩。
  *
@@ -145,8 +148,13 @@ private fun rememberBackdropCrossfade(bitmap: Bitmap?): BackdropCrossfade {
         previous = outgoing
         current = next
         if (outgoing == null) {
-            // 首次拿到封面（进入页面/开始播放）：直接显示，不做无意义的淡入
-            progress.snapTo(1f)
+            // 首次拿到封面（开始播放 / 进入页面）：从当前底色淡入，不再瞬切。
+            // 之前这里直接 snapTo(1f)，主页点歌那一刻背景会"啪"地变成封面。
+            progress.snapTo(0f)
+            progress.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(FIRST_FADE_MS, easing = FastOutSlowInEasing),
+            )
             return@LaunchedEffect
         }
         progress.snapTo(0f)
