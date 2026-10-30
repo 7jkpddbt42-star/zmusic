@@ -114,7 +114,9 @@ fun Modifier.liquidGlass(
     refractionHeight: Dp = 12.dp,
     refractionAmount: Dp = 24.dp,
     tint: Color = Color.White.copy(alpha = 0.08f),
-    dispersion: Boolean = true,
+    // 色散在库内是固定强度的 7 次多重采样，边缘只有一两个像素能看出来，
+    // 却是玻璃着色器里最贵的一段；默认关闭，需要时再显式打开
+    dispersion: Boolean = false,
     highlight: Boolean = true,
     interactionSource: InteractionSource? = null,
     shadowElevation: Dp = GLASS_SHADOW_ELEVATION,

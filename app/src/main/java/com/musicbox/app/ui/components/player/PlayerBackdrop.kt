@@ -95,14 +95,17 @@ fun PlayerBackdrop(
                         ),
                 )
             }
+        }
 
-            if (particles && source != null) {
-                ParticleField(
-                    source = source,
-                    isPlaying = isPlaying,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
+        // 粒子放在录制层外面：它每帧都在动，放进玻璃采样源里会让整页背景
+        // 逐帧重新录制一遍，所有玻璃表面随之重算模糊/折射，静止封面下也会一直掉帧。
+        // 玻璃因此采不到粒子，但粒子是装饰性的小点，隔着 6dp 模糊本来也看不出来。
+        if (particles && source != null) {
+            ParticleField(
+                source = source,
+                isPlaying = isPlaying,
+                modifier = Modifier.fillMaxSize(),
+            )
         }
 
         content()
