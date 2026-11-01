@@ -2,6 +2,7 @@ package com.musicbox.app.ui.search
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.musicbox.app.data.SearchHistory
 import com.musicbox.app.model.SearchType
 import com.musicbox.app.model.Song
 import com.musicbox.app.source.MusicProvider
@@ -26,10 +27,16 @@ data class SearchUiState(
 
 class SearchViewModel(
     private val provider: MusicProvider,
+    private val history: SearchHistory,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(SearchUiState())
     val state: StateFlow<SearchUiState> = _state.asStateFlow()
+
+    /** 最近搜索词：搜索页空态展示，最多 6 条。 */
+    val historyEntries: StateFlow<List<String>> = history.entries
+
+    fun clearHistory() = history.clear()
 
     fun onQueryChange(value: String) {
         _state.update { it.copy(query = value) }
@@ -45,6 +52,8 @@ class SearchViewModel(
         val keyword = _state.value.query.trim()
         if (keyword.isEmpty()) return
 
+        // 提交即记一次：搜索失败也留在历史里，用户可以直接重试
+        history.record(keyword)
         _state.update { it.copy(loading = true, message = null) }
         viewModelScope.launch {
             provider.search(keyword, SearchType.SONG, page = 1)

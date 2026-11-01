@@ -12,6 +12,7 @@ import com.musicbox.app.data.Liked
 import com.musicbox.app.data.LikedStore
 import com.musicbox.app.data.LyricDiskCache
 import com.musicbox.app.data.ListeningStatsStore
+import com.musicbox.app.data.SearchHistory
 import com.musicbox.app.data.SessionStore
 import com.musicbox.app.data.SettingsRepository
 import com.musicbox.app.data.SharedPrefsKeyValueStore
@@ -47,6 +48,17 @@ class AppContainer(context: Context) {
     private val prefs = appContext.getSharedPreferences("musicbox", Context.MODE_PRIVATE)
 
     private val kv = SharedPrefsKeyValueStore(prefs)
+
+    /**
+     * 全应用共用一条连接池：登录 / 个人内容 / 两个音源各自 new 一个 OkHttpClient 的话，
+     * 线程池与连接池都会翻成四份，冷启动也多几份对象。
+     */
+    private val httpClient: OkHttpClient = OkHttpClient.Builder()
+        .connectTimeout(10, TimeUnit.SECONDS)
+        .readTimeout(15, TimeUnit.SECONDS)
+        .build()
+
+    private val transport = OkHttpTransport(httpClient)
 
     private val deviceId: String
         get() = prefs.getString(KEY_DEVICE_ID, null)
@@ -97,30 +109,33 @@ class AppContainer(context: Context) {
 
     val history: HistoryRepository = HistoryRepository.forDir(filesDir("data"))
 
+    /** 最近搜索词，搜索页空态展示。 */
+    val searchHistory: SearchHistory = SearchHistory(appContext)
+
     /** 收藏 / 播放记录的导出与恢复（设置页「备份与恢复」）。 */
     val backup: BackupRepository = BackupRepository(liked, history)
 
     val lyricDiskCache: LyricDiskCache = LyricDiskCache.forDir(filesDir("lyrics"))
 
-    val loginApi: NetEaseLoginApi = NetEaseLoginApi(OkHttpTransport(), deviceId, log)
+    val loginApi: NetEaseLoginApi = NetEaseLoginApi(transport, deviceId, log)
 
     /** 个人内容（每日推荐 / 私人FM / 我的歌单），与音源共用登录会话。 */
     val personalApi: PersonalApi = NetEasePersonalApi(
-        transport = OkHttpTransport(),
+        transport = transport,
         deviceId = deviceId,
         session = { sessionStore.session.value },
         appLog = log,
     )
 
     private val netEaseProvider: MusicProvider = NetEaseProvider(
-        transport = OkHttpTransport(),
+        transport = transport,
         deviceId = deviceId,
         session = { sessionStore.session.value },
         appLog = log,
     )
 
     private val fallbackProvider: MusicProvider = FallbackProvider(
-        transport = OkHttpTransport(),
+        transport = transport,
         baseUrl = { settings.fallbackBaseUrl.value },
     )
 

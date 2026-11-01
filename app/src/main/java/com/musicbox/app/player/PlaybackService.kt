@@ -212,7 +212,7 @@ class PlaybackService : MediaSessionService() {
                 return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
             }
             if (customCommand.customAction == ACTION_NOTIFY_LIKE) {
-                toggleLikeFromNotification()
+                toggleLikeCurrent()
                 return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
             }
             if (customCommand.customAction != TransitionCommands.ACTION_FADE_SKIP) {
@@ -304,6 +304,7 @@ class PlaybackService : MediaSessionService() {
                 ACTION_WIDGET_TOGGLE -> if (player.isPlaying) player.pause() else player.play()
                 ACTION_WIDGET_NEXT -> fade.skipWithFade(forward = true)
                 ACTION_WIDGET_PREVIOUS -> fade.skipWithFade(forward = false)
+                ACTION_WIDGET_LIKE -> toggleLikeCurrent()
             }
             if (player.mediaItemCount == 0) {
                 stopSelf(startId)
@@ -369,13 +370,14 @@ class PlaybackService : MediaSessionService() {
     }
 
     /**
-     * 通知栏心形点击：先改本机收藏（通知栏立刻换图标），登录时再同步到网易云；
+     * 心形点击（通知栏 / 桌面组件共用）：先改本机收藏（两处图标立刻换），登录时再同步到网易云；
      * 同步失败回滚，保证桌面上的心形不会和账号状态长期背离。
      */
-    private fun toggleLikeFromNotification() {
+    private fun toggleLikeCurrent() {
         val song = currentSong() ?: return
         val nextLiked = container.liked.toggle(song)
         refreshMediaButtons()
+        widgetUpdater.onLikeChanged()
 
         val s = container.sessionStore.session.value
         if (!s.isLoggedIn || s.userId <= 0) return
@@ -383,7 +385,10 @@ class PlaybackService : MediaSessionService() {
             container.personalApi.likeSong(song.id, nextLiked, s.userId)
                 .onFailure {
                     if (nextLiked) container.liked.remove(song.id) else container.liked.add(song)
-                    mainHandler.post { refreshMediaButtons() }
+                    mainHandler.post {
+                        refreshMediaButtons()
+                        widgetUpdater.onLikeChanged()
+                    }
                 }
         }
     }
@@ -509,8 +514,9 @@ const val ARG_FX_HIGH = "fx_high"
 /** 通知栏喜欢按钮自定义命令。 */
 const val ACTION_NOTIFY_LIKE = "musicbox.notify.like"
 
-/** 桌面小组件按钮：显式服务 Intent 的 action 前缀与三个动作。 */
+/** 桌面小组件按钮：显式服务 Intent 的 action 前缀与四个动作。 */
 const val ACTION_WIDGET_TOGGLE = "musicbox.widget.toggle"
 const val ACTION_WIDGET_NEXT = "musicbox.widget.next"
 const val ACTION_WIDGET_PREVIOUS = "musicbox.widget.previous"
+const val ACTION_WIDGET_LIKE = "musicbox.widget.like"
 private const val WIDGET_ACTION_PREFIX = "musicbox.widget."

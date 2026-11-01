@@ -7,4 +7,6 @@
     <string name="widget_play_desc">播放</string>
     <string name="widget_pause_desc">暂停</string>
     <string name="widget_next_desc">下一首</string>
+    <string name="widget_like_desc">喜欢</string>
+    <string name="widget_unlike_desc">取消喜欢</string>
 </resources>

@@ -61,9 +61,11 @@ import com.musicbox.app.ui.theme.THUMB_EDGE_PX
 @Composable
 fun SearchScreen(
     state: SearchUiState,
+    history: List<String>,
     onQueryChange: (String) -> Unit,
     onSearch: () -> Unit,
     onQuickSearch: (String) -> Unit,
+    onClearHistory: () -> Unit,
     nowPlayingSongId: Long?,
     onSongClick: (Int) -> Unit,
     modifier: Modifier = Modifier,
@@ -155,7 +157,11 @@ fun SearchScreen(
                         }
                     }
 
-                    else -> SearchIdle(onQuickSearch = onQuickSearch)
+                    else -> SearchIdle(
+                        history = history,
+                        onQuickSearch = onQuickSearch,
+                        onClearHistory = onClearHistory,
+                    )
                 }
             }
         }
@@ -270,9 +276,13 @@ private fun SearchField(
     }
 }
 
-/** 空态：玻璃卡 + 提示 + 热门关键词，点词直接搜。 */
+/** 空态：玻璃卡 + 提示 + 关键词，点词直接搜。有最近搜索时优先展示最近搜索。 */
 @Composable
-private fun SearchIdle(onQuickSearch: (String) -> Unit) {
+private fun SearchIdle(
+    history: List<String>,
+    onQuickSearch: (String) -> Unit,
+    onClearHistory: () -> Unit,
+) {
     val primary = MaterialTheme.colorScheme.primary
     Column(
         modifier = Modifier.fillMaxSize().padding(bottom = 48.dp),
@@ -309,24 +319,62 @@ private fun SearchIdle(onQuickSearch: (String) -> Unit) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 6.dp),
                 )
-                Text(
-                    text = "热门搜索",
-                    style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.2.sp),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                    modifier = Modifier.padding(top = 20.dp, bottom = 10.dp),
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    KeywordChip("周杰伦", onQuickSearch)
-                    KeywordChip("陈奕迅", onQuickSearch)
-                    KeywordChip("告五人", onQuickSearch)
-                }
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.padding(top = 8.dp),
-                ) {
-                    KeywordChip("林俊杰", onQuickSearch)
-                    KeywordChip("邓紫棋", onQuickSearch)
-                    KeywordChip("纯音乐", onQuickSearch)
+
+                if (history.isEmpty()) {
+                    Text(
+                        text = "热门搜索",
+                        style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.2.sp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                        modifier = Modifier.padding(top = 20.dp, bottom = 10.dp),
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        KeywordChip("周杰伦", onQuickSearch)
+                        KeywordChip("陈奕迅", onQuickSearch)
+                        KeywordChip("告五人", onQuickSearch)
+                    }
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.padding(top = 8.dp),
+                    ) {
+                        KeywordChip("林俊杰", onQuickSearch)
+                        KeywordChip("邓紫棋", onQuickSearch)
+                        KeywordChip("纯音乐", onQuickSearch)
+                    }
+                } else {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(top = 20.dp, bottom = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = "最近搜索",
+                            style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.2.sp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                            modifier = Modifier.weight(1f),
+                        )
+                        Text(
+                            text = "清空",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = primary.copy(alpha = 0.8f),
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .clickable(onClick = onClearHistory)
+                                .padding(horizontal = 6.dp, vertical = 2.dp),
+                        )
+                    }
+                    // 最多 6 条，一行 3 个等宽铺满；关键词过长时省略，不把整行挤出去
+                    history.chunked(3).forEachIndexed { index, row ->
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = if (index == 0) 0.dp else 8.dp),
+                        ) {
+                            row.forEach { keyword ->
+                                KeywordChip(keyword, onQuickSearch, Modifier.weight(1f))
+                            }
+                            repeat(3 - row.size) { Spacer(modifier = Modifier.weight(1f)) }
+                        }
+                    }
                 }
             }
         }
@@ -334,19 +382,26 @@ private fun SearchIdle(onQuickSearch: (String) -> Unit) {
 }
 
 @Composable
-private fun KeywordChip(keyword: String, onQuickSearch: (String) -> Unit) {
+private fun KeywordChip(
+    keyword: String,
+    onQuickSearch: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val primary = MaterialTheme.colorScheme.primary
     Box(
-        modifier = Modifier
+        modifier = modifier
             .clip(CircleShape)
             .background(primary.copy(alpha = 0.10f))
             .clickable { onQuickSearch(keyword) }
             .padding(horizontal = 14.dp, vertical = 7.dp),
+        contentAlignment = Alignment.Center,
     ) {
         Text(
             text = keyword,
             style = MaterialTheme.typography.labelMedium,
             color = primary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }

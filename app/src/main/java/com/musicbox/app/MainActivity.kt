@@ -139,6 +139,25 @@ import java.util.Locale
 private fun backupFileName(): String =
     "z-music-backup-${SimpleDateFormat("yyyyMMdd", Locale.US).format(Date())}.json"
 
+/** 备份文件上限：正常备份只有几十 KB，超过 4 MB 的几乎一定是选错了文件。 */
+private const val MAX_BACKUP_BYTES = 4 * 1024 * 1024
+
+/**
+ * 读取备份文本并对体积设上限。
+ * 不用 `readBytes()`：万一用户在系统文件选择器里点了一个大视频，整份读进内存会直接 OOM。
+ */
+private fun readBackupText(input: java.io.InputStream): String? {
+    val buffer = ByteArray(8 * 1024)
+    val out = java.io.ByteArrayOutputStream()
+    while (true) {
+        val count = input.read(buffer)
+        if (count < 0) break
+        out.write(buffer, 0, count)
+        if (out.size() > MAX_BACKUP_BYTES) return null
+    }
+    return out.toString(Charsets.UTF_8.name())
+}
+
 /** 按来源解析当前生效的主题 seed。壁纸取色在低版本/取色失败时返回 null。 */
 private fun resolveSeed(
     source: SeedSource,
@@ -218,7 +237,9 @@ private fun MusicBoxApp(
     }
 
     val searchVm: SearchViewModel = viewModel(
-        factory = viewModelFactory { initializer { SearchViewModel(container.provider) } },
+        factory = viewModelFactory {
+            initializer { SearchViewModel(container.provider, container.searchHistory) }
+        },
     )
     val playerVm: PlayerViewModel = viewModel(
         factory = viewModelFactory {
@@ -262,6 +283,8 @@ private fun MusicBoxApp(
     )
 
     val searchState by searchVm.state.collectAsStateWithLifecycle()
+    // 最近搜索词只在空态可见，单独订阅，避免搜索过程带着它一起重组
+    val searchHistoryEntries by searchVm.historyEntries.collectAsStateWithLifecycle()
     // 位置每 250ms 变化一次，但页面结构（歌曲/标题/播放态/队列）不需要跟着重组。
     // 顶层只订阅去掉位置的结构态；播放页内部再单独订阅完整状态，
     // 避免主界面每秒被 4 次位置刷新带着重组。
@@ -373,13 +396,12 @@ private fun MusicBoxApp(
             scope.launch {
                 val text = withContext(Dispatchers.IO) {
                     runCatching {
-                        context.contentResolver.openInputStream(uri)?.use {
-                            it.readBytes().toString(Charsets.UTF_8)
-                        }
+                        context.contentResolver.openInputStream(uri)?.use { readBackupText(it) }
                     }.getOrNull()
                 }
                 when {
-                    text.isNullOrBlank() -> snackbarHostState.showSnackbar("无法读取所选文件")
+                    text.isNullOrBlank() ->
+                        snackbarHostState.showSnackbar("无法读取所选文件（备份应小于 4 MB）")
                     !BackupRepository.looksLikeBackup(text) ->
                         snackbarHostState.showSnackbar("所选文件不是 z-music 备份")
                     else -> withContext(Dispatchers.IO) { container.backup.import(text) }.fold(
@@ -586,9 +608,11 @@ private fun MusicBoxApp(
                             )
                             MainTab.SEARCH -> SearchScreen(
                                 state = searchState,
+                                history = searchHistoryEntries,
                                 onQueryChange = searchVm::onQueryChange,
                                 onSearch = searchVm::search,
                                 onQuickSearch = searchVm::quickSearch,
+                                onClearHistory = searchVm::clearHistory,
                                 nowPlayingSongId = playState.currentSongId,
                                 onSongClick = { index ->
                                     playerVm.play(searchState.results, index)
@@ -666,6 +690,15 @@ private fun MusicBoxApp(
                                     onDelete = { songId ->
                                         container.downloads.remove(songId)
                                         SongDownloader.clear(songId)
+                                    },
+                                    onClearAll = {
+                                        scope.launch {
+                                            withContext(Dispatchers.IO) {
+                                                container.downloads.clearAll()
+                                                SongDownloader.clearAll()
+                                            }
+                                            snackbarHostState.showSnackbar("已清空所有下载")
+                                        }
                                     },
                                     onBack = { showDownloads = false },
                                     modifier = overlayModifier,
@@ -1035,6 +1068,10 @@ private fun MusicBoxApp(
                     enabled = audioFxEnabled,
                     bands = audioFxBands.toMutableList().apply { this[index] = db },
                 )
+            },
+            onAudioFxPreset = { bands ->
+                bands.forEachIndexed { index, db -> container.settings.setAudioFxBand(index, db) }
+                playerVm.setAudioFx(enabled = audioFxEnabled, bands = bands)
             },
             onClearLyricCache = {
                 container.lyricDiskCache.clear()

@@ -4,15 +4,23 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -22,13 +30,17 @@ import com.musicbox.app.player.DownloadedSong
 import com.musicbox.app.ui.components.GlassBackButton
 import com.musicbox.app.ui.components.GlassEmptyState
 import com.musicbox.app.ui.components.GlassListPanel
+import com.musicbox.app.ui.components.GlassPill
 import com.musicbox.app.ui.components.MusicIcons
 import com.musicbox.app.ui.components.PageHeader
 import java.util.Locale
 
+/** 列表排序方式：默认按保存时间（新的在前），也可以按体积（大的在前）找占地方的那些。 */
+private enum class DownloadSort { Recent, Size }
+
 /**
  * 已下载列表：点整行直接播（本地文件，断网也能播），行尾垃圾桶删除单曲。
- * 版式与「最近播放」一致：页头 + 整块玻璃列表。
+ * 页头右侧可切换排序、清空全部（带二次确认）。
  */
 @Composable
 fun DownloadedScreen(
@@ -36,9 +48,20 @@ fun DownloadedScreen(
     nowPlayingSongId: Long?,
     onSongClick: (Song) -> Unit,
     onDelete: (Long) -> Unit,
+    onClearAll: () -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var sort by remember { mutableStateOf(DownloadSort.Recent) }
+    var confirmClear by remember { mutableStateOf(false) }
+
+    val sorted = remember(songs, sort) {
+        when (sort) {
+            DownloadSort.Recent -> songs
+            DownloadSort.Size -> songs.sortedByDescending { it.sizeBytes }
+        }
+    }
+
     Column(modifier = modifier.fillMaxSize().padding(horizontal = 16.dp)) {
         PageHeader(
             title = "已下载",
@@ -48,6 +71,44 @@ fun DownloadedScreen(
                 "${songs.size} 首 · 共 ${formatBytes(songs.sumOf { it.sizeBytes })}"
             },
             leading = { GlassBackButton(onClick = onBack) },
+            trailing = if (songs.isEmpty()) {
+                null
+            } else {
+                {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        GlassPill(
+                            onClick = {
+                                sort = if (sort == DownloadSort.Recent) {
+                                    DownloadSort.Size
+                                } else {
+                                    DownloadSort.Recent
+                                }
+                            },
+                        ) {
+                            Text(
+                                text = if (sort == DownloadSort.Recent) "按时间" else "按体积",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        GlassPill(onClick = { confirmClear = true }) {
+                            Icon(
+                                imageVector = MusicIcons.Trash,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(14.dp),
+                            )
+                            Spacer(modifier = Modifier.width(5.dp))
+                            Text(
+                                text = "清空",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+            },
         )
         if (songs.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -63,7 +124,7 @@ fun DownloadedScreen(
                 modifier = Modifier.fillMaxSize().padding(bottom = 8.dp),
                 shape = RoundedCornerShape(26.dp),
             ) {
-                itemsIndexed(songs, key = { _, item -> item.song.id }) { _, item ->
+                itemsIndexed(sorted, key = { _, item -> item.song.id }) { _, item ->
                     SongRow(
                         song = item.song,
                         isCurrent = item.song.id == nowPlayingSongId,
@@ -77,10 +138,11 @@ fun DownloadedScreen(
                                         .copy(alpha = 0.7f),
                                     modifier = Modifier.padding(horizontal = 8.dp),
                                 )
+                                // 触控目标按 48dp 的最小可点尺寸留足，图标本身仍是 16dp
                                 Box(
                                     modifier = Modifier
-                                        .size(34.dp)
-                                        .clip(RoundedCornerShape(17.dp))
+                                        .size(40.dp)
+                                        .clip(RoundedCornerShape(20.dp))
                                         .clickable { onDelete(item.song.id) },
                                     contentAlignment = Alignment.Center,
                                 ) {
@@ -98,6 +160,31 @@ fun DownloadedScreen(
                 }
             }
         }
+    }
+
+    if (confirmClear) {
+        val totalBytes = songs.sumOf { it.sizeBytes }
+        AlertDialog(
+            onDismissRequest = { confirmClear = false },
+            title = { Text("清空所有下载？") },
+            text = {
+                Text(
+                    "将删除本机 ${songs.size} 首已下载歌曲，释放 ${formatBytes(totalBytes)}；" +
+                        "收藏与播放记录不受影响。",
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        confirmClear = false
+                        onClearAll()
+                    },
+                ) { Text("清空") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmClear = false }) { Text("取消") }
+            },
+        )
     }
 }
 

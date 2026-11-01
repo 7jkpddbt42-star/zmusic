@@ -24,6 +24,7 @@ import com.musicbox.app.lyric.LyricParser
 import com.musicbox.app.lyric.LyricTimeline
 import com.musicbox.app.lyric.currentLineTextAt
 import com.musicbox.app.lyric.sharedLyricCache
+import com.musicbox.app.player.ACTION_WIDGET_LIKE
 import com.musicbox.app.player.ACTION_WIDGET_NEXT
 import com.musicbox.app.player.ACTION_WIDGET_PREVIOUS
 import com.musicbox.app.player.ACTION_WIDGET_TOGGLE
@@ -43,6 +44,7 @@ data class WidgetSnapshot(
     val lyric: String = "",
     val isPlaying: Boolean = false,
     val hasSong: Boolean = false,
+    val liked: Boolean = false,
 )
 
 /**
@@ -60,6 +62,7 @@ object WidgetStore {
     private const val KEY_LYRIC = "lyric"
     private const val KEY_PLAYING = "playing"
     private const val KEY_HAS_SONG = "has_song"
+    private const val KEY_LIKED = "liked"
 
     private const val COVER_EDGE_PX = 192
 
@@ -90,6 +93,7 @@ object WidgetStore {
             lyric = p.getString(KEY_LYRIC, null).orEmpty(),
             isPlaying = p.getBoolean(KEY_PLAYING, false),
             hasSong = p.getBoolean(KEY_HAS_SONG, false),
+            liked = p.getBoolean(KEY_LIKED, false),
         )
     }
 
@@ -100,6 +104,7 @@ object WidgetStore {
             .putString(KEY_LYRIC, snapshot.lyric)
             .putBoolean(KEY_PLAYING, snapshot.isPlaying)
             .putBoolean(KEY_HAS_SONG, snapshot.hasSong)
+            .putBoolean(KEY_LIKED, snapshot.liked)
             .apply()
     }
 
@@ -252,12 +257,24 @@ class PlayerWidgetProvider : AppWidgetProvider() {
 
             val playIcon = if (snapshot.isPlaying) R.drawable.ic_widget_pause else R.drawable.ic_widget_play
             views.setImageViewResource(R.id.widget_play, playIcon)
+
+            val likeIcon = if (snapshot.liked) R.drawable.ic_widget_heart_filled else R.drawable.ic_widget_heart
+            views.setImageViewResource(R.id.widget_like, likeIcon)
+            // 没有歌的时候心形不可点，避免点了没反应
+            views.setBoolean(R.id.widget_like, "setEnabled", snapshot.hasSong)
+
             // RemoteViews#setContentDescription 是 Android 12 才有的 API，旧版本跳过即可
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 views.setContentDescription(
                     R.id.widget_play,
                     context.getString(
                         if (snapshot.isPlaying) R.string.widget_pause_desc else R.string.widget_play_desc,
+                    ),
+                )
+                views.setContentDescription(
+                    R.id.widget_like,
+                    context.getString(
+                        if (snapshot.liked) R.string.widget_unlike_desc else R.string.widget_like_desc,
                     ),
                 )
             }
@@ -274,6 +291,10 @@ class PlayerWidgetProvider : AppWidgetProvider() {
             views.setOnClickPendingIntent(
                 R.id.widget_next,
                 action(context, ACTION_WIDGET_NEXT, 3),
+            )
+            views.setOnClickPendingIntent(
+                R.id.widget_like,
+                action(context, ACTION_WIDGET_LIKE, 4),
             )
 
             manager.updateAppWidget(appWidgetId, views)
@@ -380,6 +401,11 @@ class WidgetUpdater(
         if (player.isPlaying && PlayerWidgetProvider.hasWidgets(context)) startTicker() else stopTicker()
     }
 
+    /** 收藏状态变了（点组件心形 / 通知栏心形 / 账号同步回滚）：只刷快照与心形图标。 */
+    fun onLikeChanged() {
+        push()
+    }
+
     /** 服务退出：别让桌面停在"正在播放"的假状态。 */
     fun release() {
         stopTicker()
@@ -403,6 +429,7 @@ class WidgetUpdater(
                 ),
             )
         } else {
+            val songId = item.mediaId.toLongOrNull()
             WidgetStore.write(
                 context,
                 WidgetSnapshot(
@@ -411,6 +438,7 @@ class WidgetUpdater(
                     lyric = lastLyric,
                     isPlaying = player.isPlaying,
                     hasSong = true,
+                    liked = songId != null && container.liked.isLiked(songId),
                 ),
             )
         }

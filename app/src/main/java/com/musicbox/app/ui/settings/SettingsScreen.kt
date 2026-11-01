@@ -115,6 +115,7 @@ fun SettingsScreen(
     onSmartTransition: (Boolean) -> Unit,
     onAudioFxEnabled: (Boolean) -> Unit,
     onAudioFxBand: (Int, Int) -> Unit,
+    onAudioFxPreset: (List<Int>) -> Unit,
     onClearLyricCache: () -> Unit,
     onClearSongCache: () -> Unit,
     onExportBackup: () -> Unit,
@@ -396,6 +397,24 @@ fun SettingsScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(top = 4.dp),
                         )
+                        // 预设：一次把三段增益填好，仍可继续手动微调
+                        Text(
+                            "预设",
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(top = 12.dp),
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            AUDIO_FX_PRESETS.forEach { preset ->
+                                ChoiceChip(
+                                    label = preset.label,
+                                    selected = audioFxBands == preset.bands,
+                                    onClick = { onAudioFxPreset(preset.bands) },
+                                )
+                            }
+                        }
                         AudioFxBandRow("低音", audioFxBands.getOrElse(0) { 0 }) { onAudioFxBand(0, it) }
                         AudioFxBandRow("中频", audioFxBands.getOrElse(1) { 0 }) { onAudioFxBand(1, it) }
                         AudioFxBandRow("高音", audioFxBands.getOrElse(2) { 0 }) { onAudioFxBand(2, it) }
@@ -731,6 +750,16 @@ private fun ChoiceChip(
         )
     }
 }
+
+/** 均衡器预设：三段增益（低 / 中 / 高），单位 dB，范围与滑杆一致（±6）。 */
+private data class AudioFxPreset(val label: String, val bands: List<Int>)
+
+private val AUDIO_FX_PRESETS = listOf(
+    AudioFxPreset("平直", listOf(0, 0, 0)),
+    AudioFxPreset("流行", listOf(2, -1, 1)),
+    AudioFxPreset("摇滚", listOf(4, -2, 2)),
+    AudioFxPreset("人声", listOf(0, 3, -1)),
+)
 
 /**
  * 单个频段滑杆：左侧名称、右侧当前增益（dB），下方整宽滑杆。
