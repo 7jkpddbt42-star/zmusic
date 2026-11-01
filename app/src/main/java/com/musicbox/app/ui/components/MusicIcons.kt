@@ -345,6 +345,51 @@ object MusicIcons {
         }
     }
 
+    /** 断网：wifi 弧线 + 斜杠。 */
+    val WifiOff: ImageVector = strokeIcon("music_wifi_off") {
+        line {
+            moveTo(4.4f, 10.1f)
+            curveTo(8f, 6.6f, 16f, 6.6f, 19.6f, 10.1f)
+            moveTo(7.6f, 13.3f)
+            curveTo(10f, 11.1f, 14f, 11.1f, 16.4f, 13.3f)
+        }
+        solid {
+            circle(12f, 17.2f, 1.35f)
+        }
+        line {
+            moveTo(4.2f, 4.2f)
+            lineTo(19.8f, 19.8f)
+        }
+    }
+
+    /** 下载：向下箭头 + 落点横线。 */
+    val Download: ImageVector = strokeIcon("music_download") {
+        line {
+            moveTo(12f, 4.6f)
+            lineTo(12f, 15.2f)
+            moveTo(7.8f, 11.1f)
+            lineTo(12f, 15.3f)
+            lineTo(16.2f, 11.1f)
+        }
+        line {
+            moveTo(5f, 19f)
+            lineTo(19f, 19f)
+        }
+    }
+
+    /** 已下载：对勾 + 落点横线。 */
+    val DownloadDone: ImageVector = strokeIcon("music_download_done") {
+        line {
+            moveTo(5f, 19f)
+            lineTo(19f, 19f)
+        }
+        line {
+            moveTo(5.4f, 12.2f)
+            lineTo(9.8f, 16.4f)
+            lineTo(18.6f, 6.4f)
+        }
+    }
+
     /** 空状态：音符。 */
     val MusicNote: ImageVector = strokeIcon("music_note") {
         solid {

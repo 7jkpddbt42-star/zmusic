@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 封面占位：圆角底 + 居中音符，没封面时也不留空块 -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <corners android:radius="14dp" />
+            <solid android:color="#1FFFFFFF" />
+        </shape>
+    </item>
+    <item
+        android:drawable="@drawable/ic_widget_note"
+        android:gravity="center"
+        android:width="26dp"
+        android:height="26dp" />
+</layer-list>

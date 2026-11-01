@@ -5,6 +5,7 @@ import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -13,6 +14,8 @@ import androidx.compose.ui.Modifier
 import com.musicbox.app.data.BackgroundSpec
 import com.musicbox.app.data.PlayerStyle
 import com.musicbox.app.player.PositionSource
+import com.musicbox.app.ui.components.player.DownloadAction
+import com.musicbox.app.ui.components.player.LocalDownloadAction
 import com.musicbox.app.ui.components.player.StyleSwitcher
 import com.musicbox.app.ui.styles.FrostedPlayerStyle
 import com.musicbox.app.ui.styles.GesturePlayerStyle
@@ -44,6 +47,8 @@ internal fun PlayerScreen(
     playerStyle: PlayerStyle,
     actions: PlayerActions,
     modifier: Modifier = Modifier,
+    /** 当前歌曲的下载入口；null 时不显示下载按钮。 */
+    download: DownloadAction? = null,
 ) {
     var stylePanelVisible by remember { mutableStateOf(false) }
 
@@ -56,12 +61,13 @@ internal fun PlayerScreen(
         if (stylePanelVisible) stylePanelVisible = false else actions.onCollapse()
     }
 
-    Crossfade(
-        targetState = playerStyle,
-        animationSpec = tween(durationMillis = 320),
-        label = "playerStyle",
-        modifier = modifier.fillMaxSize(),
-    ) { style ->
+    CompositionLocalProvider(LocalDownloadAction provides download) {
+        Crossfade(
+            targetState = playerStyle,
+            animationSpec = tween(durationMillis = 320),
+            label = "playerStyle",
+            modifier = modifier.fillMaxSize(),
+        ) { style ->
         // 不在这里铺不透明底色：背景由外层播放层统一提供，风格只负责内容布局
         val styleModifier = Modifier.fillMaxSize()
 
@@ -97,6 +103,7 @@ internal fun PlayerScreen(
                 state, source, background, modeLabel, isLiked, lyricLine, styledActions, styleModifier,
                 lyricTranslation,
             )
+        }
         }
     }
 

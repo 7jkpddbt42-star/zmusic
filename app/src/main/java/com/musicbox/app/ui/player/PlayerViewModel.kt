@@ -9,6 +9,7 @@ import androidx.media3.common.MediaMetadata
 import com.musicbox.app.data.ListeningStatsStore
 import com.musicbox.app.model.PlayMode
 import com.musicbox.app.model.Song
+import com.musicbox.app.player.Downloads
 import com.musicbox.app.player.SLEEP_AFTER_CURRENT
 import com.musicbox.app.player.SongUri
 import com.musicbox.app.player.applyTo
@@ -89,6 +90,11 @@ class PlayerViewModel(
             val attempts = minOf(queue.size, MAX_STREAM_PREFETCH)
             for (offset in 0 until attempts) {
                 val index = (firstIndex + offset) % queue.size
+                // 已下载的歌读本地文件，不必取流：断网时也能从「已下载」列表点开就听
+                if (Downloads.isDownloadedNow(queue[index].id)) {
+                    playIndex = index
+                    break
+                }
                 val info = provider.getStreamUrl(queue[index].id)
                     .getOrElse { error ->
                         lastError = error
@@ -165,6 +171,11 @@ class PlayerViewModel(
     /** 倍速：立即作用到播放器；持久化由上层一起写，保证重启后沿用。 */
     fun setSpeed(speed: Float) {
         connection.controller.value?.setPlaybackSpeed(speed)
+    }
+
+    /** 均衡器：把开关与三段增益下发给播放服务，立即生效。 */
+    fun setAudioFx(enabled: Boolean, bands: List<Int>) {
+        connection.setAudioFx(enabled, IntArray(3) { bands.getOrElse(it) { 0 } })
     }
 
     private fun formatRemaining(totalSeconds: Int): String =

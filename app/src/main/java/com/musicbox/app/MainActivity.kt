@@ -29,6 +29,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
@@ -36,8 +37,11 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
@@ -72,9 +76,15 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.musicbox.app.data.BackgroundSpec
 import com.musicbox.app.data.BackgroundType
+import com.musicbox.app.data.BackupRepository
 import com.musicbox.app.data.PlayerStyle
 import com.musicbox.app.desktoplyric.DesktopLyricService
+import com.musicbox.app.model.Song
+import com.musicbox.app.player.DownloadState
+import com.musicbox.app.player.DownloadStates
+import com.musicbox.app.player.Downloads
 import com.musicbox.app.player.SongDiskCache
+import com.musicbox.app.player.SongDownloader
 import com.musicbox.app.player.sharedSongStreamCache
 import com.musicbox.app.ui.BottomTabs
 import com.musicbox.app.ui.LocalPageSeed
@@ -85,12 +95,15 @@ import com.musicbox.app.ui.components.liquidglass.LiquidGlassPreviewContent
 import com.musicbox.app.ui.components.liquidglass.LocalGlassBackdrop
 import com.musicbox.app.ui.components.liquidglass.glassBackdropSource
 import com.musicbox.app.ui.components.liquidglass.rememberGlassBackdrop
+import com.musicbox.app.ui.components.MusicIcons
+import com.musicbox.app.ui.components.player.DownloadAction
 import com.musicbox.app.ui.components.player.LocalPlayerBackgroundBlur
 import com.musicbox.app.ui.home.AllPlaylistsScreen
 import com.musicbox.app.ui.home.HomeScreen
 import com.musicbox.app.ui.home.HomeViewModel
 import com.musicbox.app.ui.home.PlaylistDetailScreen
 import com.musicbox.app.ui.home.PlaylistTarget
+import com.musicbox.app.ui.library.DownloadedScreen
 import com.musicbox.app.ui.library.HistoryScreen
 import com.musicbox.app.ui.library.LibraryViewModel
 import com.musicbox.app.ui.login.LoginScreen
@@ -118,6 +131,13 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+/** 备份文件名：z-music-backup-20261101.json，同一天多次导出会由系统自动加序号。 */
+private fun backupFileName(): String =
+    "z-music-backup-${SimpleDateFormat("yyyyMMdd", Locale.US).format(Date())}.json"
 
 /** 按来源解析当前生效的主题 seed。壁纸取色在低版本/取色失败时返回 null。 */
 private fun resolveSeed(
@@ -235,6 +255,7 @@ private fun MusicBoxApp(
                     personalApi = container.personalApi,
                     loginApi = container.loginApi,
                     sessionStore = container.sessionStore,
+                    likedStore = container.liked,
                 )
             }
         },
@@ -269,6 +290,10 @@ private fun MusicBoxApp(
     val fallbackUrl by container.settings.fallbackBaseUrl.collectAsStateWithLifecycle()
     val freeSourceEnabled by container.settings.freeSourceEnabled.collectAsStateWithLifecycle()
     val smartTransition by container.settings.smartTransition.collectAsStateWithLifecycle()
+    val audioFxEnabled by container.settings.audioFxEnabled.collectAsStateWithLifecycle()
+    val audioFxBands by container.settings.audioFxBands.collectAsStateWithLifecycle()
+    // 已下载列表只在「下载完成 / 删除」时变化，收在顶层不会带来逐帧重组
+    val downloadedSongs by container.downloads.songs.collectAsStateWithLifecycle()
     val desktopLyricEnabled by container.settings.desktopLyricEnabled.collectAsStateWithLifecycle()
     val desktopLyricFontSp by container.settings.desktopLyricFontSp.collectAsStateWithLifecycle()
     val desktopLyricColorArgb by container.settings.desktopLyricColorArgb.collectAsStateWithLifecycle()
@@ -313,6 +338,67 @@ private fun MusicBoxApp(
         }
     }
 
+    // 备份导出：系统文稿界面选保存位置，内容是本机收藏与播放记录的 JSON。
+    // 读写都放 IO 线程（记录最多 200 条、收藏可能更多），结果只用底部提示，不弹对话框。
+    val exportBackupLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json"),
+    ) { uri ->
+        if (uri == null) {
+            scope.launch { snackbarHostState.showSnackbar("已取消导出") }
+        } else {
+            scope.launch {
+                val text = withContext(Dispatchers.IO) { container.backup.export() }
+                val written = withContext(Dispatchers.IO) {
+                    runCatching {
+                        context.contentResolver.openOutputStream(uri)?.use {
+                            it.write(text.toByteArray(Charsets.UTF_8))
+                        } ?: error("无法写入所选位置")
+                    }
+                }
+                written.fold(
+                    onSuccess = { snackbarHostState.showSnackbar("备份已导出") },
+                    onFailure = {
+                        snackbarHostState.showSnackbar("导出失败：${it.message ?: "无法写入文件"}")
+                    },
+                )
+            }
+        }
+    }
+
+    // 备份恢复：只合并、不覆盖。先做格式预检，选错文件时给一句人话而不是抛解析异常。
+    val importBackupLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri != null) {
+            scope.launch {
+                val text = withContext(Dispatchers.IO) {
+                    runCatching {
+                        context.contentResolver.openInputStream(uri)?.use {
+                            it.readBytes().toString(Charsets.UTF_8)
+                        }
+                    }.getOrNull()
+                }
+                when {
+                    text.isNullOrBlank() -> snackbarHostState.showSnackbar("无法读取所选文件")
+                    !BackupRepository.looksLikeBackup(text) ->
+                        snackbarHostState.showSnackbar("所选文件不是 z-music 备份")
+                    else -> withContext(Dispatchers.IO) { container.backup.import(text) }.fold(
+                        onSuccess = { result ->
+                            snackbarHostState.showSnackbar(
+                                "已恢复：新增收藏 ${result.likedCount} 首、播放记录 ${result.historyCount} 条",
+                            )
+                        },
+                        onFailure = { error ->
+                            snackbarHostState.showSnackbar(
+                                "恢复失败：${error.message ?: "文件格式不正确"}",
+                            )
+                        },
+                    )
+                }
+            }
+        }
+    }
+
     // 桌面歌词悬浮窗：无权限时跳系统「显示在其他应用上层」设置页，返回后回读状态再决定启停
     val overlayPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
@@ -346,6 +432,7 @@ private fun MusicBoxApp(
     var showLogin by remember { mutableStateOf(false) }
     var showGlassDemo by remember { mutableStateOf(false) }
     var showHistory by remember { mutableStateOf(false) }
+    var showDownloads by remember { mutableStateOf(false) }
     var showPlaylists by remember { mutableStateOf(false) }
 
     // 从通知栏 / 锁屏媒体卡片进入 → 直接展开播放页
@@ -357,14 +444,19 @@ private fun MusicBoxApp(
         }
     }
 
-    // 断网 / 恢复：明确提示（设计文档 §9）
-    var wasOnline by remember { mutableStateOf(true) }
+    // 断网 / 恢复：顶部常驻胶囊提示（设计文档 §9）。
+    // 断网时一直挂着，恢复后短暂显示「网络已恢复」再淡出，不打断任何操作。
+    var networkBanner by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(Unit) {
+        var wasOnline = true
         container.networkMonitor.observe().collect { online ->
-            if (!online) {
-                snackbarHostState.showSnackbar("网络已断开，播放可能中断")
-            } else if (!wasOnline) {
-                snackbarHostState.showSnackbar("网络已恢复")
+            when {
+                !online -> networkBanner = "网络已断开，播放可能中断"
+                !wasOnline -> {
+                    networkBanner = "网络已恢复"
+                    delay(1800)
+                    networkBanner = null
+                }
             }
             wasOnline = online
         }
@@ -510,6 +602,7 @@ private fun MusicBoxApp(
                                 liked = homeState.liked,
                                 playlists = homeState.playlists,
                                 listeningSeconds = listeningSeconds,
+                                downloadedCount = downloadedSongs.size,
                                 onLogin = { showLogin = true },
                                 onLogout = {
                                     container.sessionStore.clear()
@@ -517,6 +610,7 @@ private fun MusicBoxApp(
                                 },
                                 onOpenSettings = { showSettings = true },
                                 onOpenHistory = { showHistory = true },
+                                onOpenDownloads = { showDownloads = true },
                                 onOpenTarget = homeVm::openDetail,
                                 onOpenPlaylists = { showPlaylists = true },
                                 modifier = Modifier,
@@ -546,6 +640,34 @@ private fun MusicBoxApp(
                                     },
                                     onClear = libraryVm::clearHistory,
                                     onBack = { showHistory = false },
+                                    modifier = overlayModifier,
+                                )
+                            }
+                        }
+
+                        // 已下载（从「我的」进入）：点歌直接读本地文件，行尾可删除
+                        if (showDownloads) {
+                            BackHandler { showDownloads = false }
+                            GlassOverlay(
+                                background = backgroundSpec,
+                                artworkUrl = playState.artworkUrl,
+                            ) { overlayModifier ->
+                                DownloadedScreen(
+                                    songs = downloadedSongs,
+                                    nowPlayingSongId = playState.currentSongId,
+                                    onSongClick = { song ->
+                                        val songs = downloadedSongs.map { it.song }
+                                        val index = songs.indexOfFirst { it.id == song.id }
+                                        if (index >= 0) {
+                                            playerVm.play(songs, index)
+                                            libraryVm.recordPlayed(song)
+                                        }
+                                    },
+                                    onDelete = { songId ->
+                                        container.downloads.remove(songId)
+                                        SongDownloader.clear(songId)
+                                    },
+                                    onBack = { showDownloads = false },
                                     modifier = overlayModifier,
                                 )
                             }
@@ -632,6 +754,7 @@ private fun MusicBoxApp(
                         homeVm.closeDetail()
                         showPlaylists = false
                         showHistory = false
+                        showDownloads = false
                         tab = next
                     },
                 )
@@ -654,6 +777,32 @@ private fun MusicBoxApp(
         }
     }
 
+    // 当前歌曲：下载与收藏都从这里取，保证两处的歌曲元数据一致
+    val currentSong = remember(
+        playState.currentSongId,
+        playState.title,
+        playState.artist,
+        playState.album,
+        playState.durationMs,
+        playState.artworkUrl,
+    ) {
+        val id = playState.currentSongId
+        val title = playState.title.orEmpty()
+        if (id == null || title.isBlank()) {
+            null
+        } else {
+            Song(
+                id = id,
+                name = title,
+                artists = playState.artist?.split(" / ")?.filter { it.isNotBlank() }.orEmpty(),
+                album = playState.album,
+                durationMs = playState.durationMs,
+                coverUrl = playState.artworkUrl,
+                providerId = "netease",
+            )
+        }
+    }
+
     // 播放页动作契约：风格布局只通过这些回调操作播放器，不接触控制器
     val playerActions = PlayerActions(
         onCollapse = { showPlayer = false },
@@ -665,7 +814,7 @@ private fun MusicBoxApp(
         onOpenQueue = { showQueue = true },
         onOpenLyric = { showLyric = true },
         onToggleLike = {
-            playState.currentSongId?.let(homeVm::toggleLike)
+            currentSong?.let(homeVm::toggleLike)
         },
         onSelectQueueItem = playerVm::selectQueueItem,
         onOpenStyleSwitcher = {},
@@ -681,6 +830,30 @@ private fun MusicBoxApp(
             container.settings.setPlaybackSpeedPercent((speed * 100).toInt())
         },
     )
+
+    // 当前歌曲的下载入口。只订阅这一首的状态流，下载进度的每次刷新只重绘这一个按钮，
+    // 不会牵着播放页整层重组。
+    val downloadAction = remember(currentSong) {
+        val song = currentSong ?: return@remember null
+        DownloadAction(
+            state = DownloadStates.stateFlow(context, song.id),
+            onClick = {
+                when (val state = DownloadStates.stateFlow(context, song.id).value) {
+                    DownloadState.Done -> scope.launch {
+                        snackbarHostState.showSnackbar("已下载到本机，可在「我的」→「已下载」里管理")
+                    }
+                    is DownloadState.InProgress -> {
+                        SongDownloader.cancel(song.id)
+                        scope.launch { snackbarHostState.showSnackbar("已取消下载") }
+                    }
+                    else -> {
+                        SongDownloader.start(context, container.provider, song)
+                        scope.launch { snackbarHostState.showSnackbar("开始下载：${song.name}") }
+                    }
+                }
+            },
+        )
+    }
 
     val playerLayer: @Composable () -> Unit = {
         // 背景模糊档位下发到所有播放页风格；设置在播放页打开时修改也会立即生效
@@ -729,6 +902,7 @@ private fun MusicBoxApp(
                             lyricTranslation = currentLineTranslation,
                             playerStyle = playerStylePref,
                             actions = playerActions,
+                            download = downloadAction,
                         )
                     }
                     // 歌词页：首帧淡入；关闭动画结束后才卸载，避免歌词列表状态被反复重建
@@ -818,7 +992,13 @@ private fun MusicBoxApp(
             fallbackBaseUrl = fallbackUrl,
             freeSourceEnabled = freeSourceEnabled,
             smartTransition = smartTransition,
+            audioFxEnabled = audioFxEnabled,
+            audioFxBands = audioFxBands,
             lyricCacheCount = container.lyricDiskCache.size(),
+            backupLikedCount = likedSongIds.size,
+            backupHistoryCount = history.size,
+            onExportBackup = { exportBackupLauncher.launch(backupFileName()) },
+            onImportBackup = { importBackupLauncher.launch(arrayOf("*/*")) },
             // 进设置页时算一次即可；清空后设置页会关闭，重开时会重新计算
             songCacheBytes = remember { SongDiskCache.sizeBytes(context) },
             themeSpec = spec,
@@ -845,6 +1025,17 @@ private fun MusicBoxApp(
                 }
             },
             onSmartTransition = container.settings::setSmartTransition,
+            onAudioFxEnabled = { enabled ->
+                container.settings.setAudioFxEnabled(enabled)
+                playerVm.setAudioFx(enabled, audioFxBands)
+            },
+            onAudioFxBand = { index, db ->
+                container.settings.setAudioFxBand(index, db)
+                playerVm.setAudioFx(
+                    enabled = audioFxEnabled,
+                    bands = audioFxBands.toMutableList().apply { this[index] = db },
+                )
+            },
             onClearLyricCache = {
                 container.lyricDiskCache.clear()
                 showSettings = false
@@ -928,6 +1119,13 @@ private fun MusicBoxApp(
     // 提示条画在最顶层：播放页、歌词页、登录页、设置页都会盖住壳层，
     // 提示（例如喜欢同步的结果或失败原因）必须能显示在这些页面之上。
     Box(modifier = Modifier.fillMaxSize()) {
+        NetworkBanner(
+            text = networkBanner,
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+                .padding(top = 8.dp),
+        )
         TopToastHost(
             state = snackbarHostState,
             modifier = Modifier
@@ -935,6 +1133,41 @@ private fun MusicBoxApp(
                 .padding(bottom = overlayBottomPadding)
                 .padding(horizontal = 24.dp),
         )
+    }
+}
+
+/**
+ * 断网胶囊：常驻在状态栏下方，不遮挡播放条与底部导航。
+ * 只做淡入淡出，不做位移，避免与页面上的其它动效打架。
+ */
+@Composable
+private fun NetworkBanner(text: String?, modifier: Modifier = Modifier) {
+    AnimatedVisibility(
+        visible = text != null,
+        enter = fadeIn(tween(220)),
+        exit = fadeOut(tween(180)),
+        modifier = modifier,
+    ) {
+        Row(
+            modifier = Modifier
+                .clip(RoundedCornerShape(50))
+                .background(MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.92f))
+                .padding(horizontal = 16.dp, vertical = 9.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Icon(
+                imageVector = MusicIcons.WifiOff,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.inverseOnSurface,
+                modifier = Modifier.size(16.dp),
+            )
+            Text(
+                text = text.orEmpty(),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.inverseOnSurface,
+            )
+        }
     }
 }
 

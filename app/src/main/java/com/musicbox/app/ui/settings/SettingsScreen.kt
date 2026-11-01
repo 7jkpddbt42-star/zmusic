@@ -1,6 +1,10 @@
 package com.musicbox.app.ui.settings
 
 import android.os.Build
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -26,6 +30,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -55,6 +60,7 @@ import com.musicbox.app.ui.theme.SeedSource
 import com.musicbox.app.ui.theme.ThemeMode
 import com.musicbox.app.ui.theme.ThemeSpec
 import java.util.Locale
+import kotlin.math.roundToInt
 
 /** 固定色色板预设（8 个）：覆盖紫/蓝/青/绿/橙/红/粉/灰。 */
 private val PRESET_COLORS: List<Int> = listOf(
@@ -87,8 +93,12 @@ fun SettingsScreen(
     fallbackBaseUrl: String,
     freeSourceEnabled: Boolean,
     smartTransition: Boolean,
+    audioFxEnabled: Boolean,
+    audioFxBands: List<Int>,
     lyricCacheCount: Int,
     songCacheBytes: Long,
+    backupLikedCount: Int,
+    backupHistoryCount: Int,
     themeSpec: ThemeSpec,
     background: BackgroundSpec,
     backgroundBlur: BackgroundBlur,
@@ -103,8 +113,12 @@ fun SettingsScreen(
     onSaveFallbackUrl: (String) -> Unit,
     onFreeSourceEnabled: (Boolean) -> Unit,
     onSmartTransition: (Boolean) -> Unit,
+    onAudioFxEnabled: (Boolean) -> Unit,
+    onAudioFxBand: (Int, Int) -> Unit,
     onClearLyricCache: () -> Unit,
     onClearSongCache: () -> Unit,
+    onExportBackup: () -> Unit,
+    onImportBackup: () -> Unit,
     onThemeMode: (ThemeMode) -> Unit,
     onSeedSource: (SeedSource) -> Unit,
     onFixedSeedArgb: (Int) -> Unit,
@@ -361,6 +375,40 @@ fun SettingsScreen(
             )
 
             SettingsGroup {
+                Text("音效", style = MaterialTheme.typography.titleMedium)
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("均衡器", modifier = Modifier.weight(1f))
+                    Switch(checked = audioFxEnabled, onCheckedChange = onAudioFxEnabled)
+                }
+                // 关闭时直接收起滑杆：淡入淡出，不留一块空壳
+                AnimatedVisibility(
+                    visible = audioFxEnabled,
+                    enter = fadeIn(tween(220)),
+                    exit = fadeOut(tween(160)),
+                ) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            "低 / 中 / 高三段增益，范围 ±6 dB，只作用于本应用播放的声音。",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 4.dp),
+                        )
+                        AudioFxBandRow("低音", audioFxBands.getOrElse(0) { 0 }) { onAudioFxBand(0, it) }
+                        AudioFxBandRow("中频", audioFxBands.getOrElse(1) { 0 }) { onAudioFxBand(1, it) }
+                        AudioFxBandRow("高音", audioFxBands.getOrElse(2) { 0 }) { onAudioFxBand(2, it) }
+                    }
+                }
+            }
+
+            HorizontalDivider(
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f),
+                modifier = Modifier.padding(vertical = 12.dp),
+            )
+
+            SettingsGroup {
                 Text("歌词", style = MaterialTheme.typography.titleMedium)
 
                 Text(
@@ -569,6 +617,36 @@ fun SettingsScreen(
             )
 
             SettingsGroup {
+                Text("备份与恢复", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "把本机收藏与最近播放导出成一个 JSON 文件，换机或重装后可恢复；" +
+                        "恢复只做合并不覆盖，不会清掉现有数据。网易云歌单本身在云端，登录即同步。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+                Text(
+                    "本机收藏 $backupLikedCount 首 · 播放记录 $backupHistoryCount 条",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
+                Row(
+                    modifier = Modifier.padding(top = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Button(onClick = onExportBackup) { Text("导出备份") }
+                    TextButton(onClick = onImportBackup) { Text("恢复备份") }
+                }
+            }
+
+            HorizontalDivider(
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f),
+                modifier = Modifier.padding(vertical = 12.dp),
+            )
+
+            SettingsGroup {
                 Text("错误日志", style = MaterialTheme.typography.titleMedium)
                 Text(
                     "签名 / 解析异常等本地技术日志，仅用于排查，不影响使用。",
@@ -650,6 +728,35 @@ private fun ChoiceChip(
             color = content,
             style = MaterialTheme.typography.labelLarge,
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+        )
+    }
+}
+
+/**
+ * 单个频段滑杆：左侧名称、右侧当前增益（dB），下方整宽滑杆。
+ * 步进 1 dB，取值 -6..6；拖到两端就是最大幅度的低频 / 高频增强（或衰减）。
+ */
+@Composable
+private fun AudioFxBandRow(label: String, db: Int, onValueChange: (Int) -> Unit) {
+    Column(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                text = if (db > 0) "+$db dB" else "$db dB",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Slider(
+            value = db.toFloat(),
+            onValueChange = { onValueChange(it.roundToInt()) },
+            valueRange = -6f..6f,
+            steps = 11,
+            modifier = Modifier.fillMaxWidth(),
         )
     }
 }

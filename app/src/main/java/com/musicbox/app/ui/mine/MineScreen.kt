@@ -62,10 +62,13 @@ fun MineScreen(
     playlists: List<PlaylistSummary>,
     /** 本机累计收听秒数，来自 [com.musicbox.app.data.ListeningStatsStore]。 */
     listeningSeconds: Long,
+    /** 本机已下载歌曲数，用于「已下载」入口的说明文案。 */
+    downloadedCount: Int,
     onLogin: () -> Unit,
     onLogout: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenHistory: () -> Unit,
+    onOpenDownloads: () -> Unit,
     onOpenTarget: (PlaylistTarget) -> Unit,
     onOpenPlaylists: () -> Unit,
     modifier: Modifier = Modifier,
@@ -200,7 +203,11 @@ fun MineScreen(
         }
 
         Entrance(index = if (session.isLoggedIn) 5 else 3) {
-            SettingsCard(onOpenSettings = onOpenSettings)
+            Column {
+                DownloadsCard(count = downloadedCount, onClick = onOpenDownloads)
+                Spacer(modifier = Modifier.height(10.dp))
+                SettingsCard(onOpenSettings = onOpenSettings)
+            }
         }
 
         Spacer(modifier = Modifier.height(22.dp))
@@ -454,6 +461,55 @@ private fun SectionHeader(
             }
         }
         trailing?.invoke()
+    }
+}
+
+/** 已下载入口：与设置卡同版式，说明文案随本机下载数量变化。 */
+@Composable
+private fun DownloadsCard(count: Int, onClick: () -> Unit) {
+    val primary = MaterialTheme.colorScheme.primary
+    GlassPanel(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(26.dp))
+                .clickable(onClick = onClick)
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .background(primary.copy(alpha = 0.12f), RoundedCornerShape(13.dp)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = MusicIcons.DownloadDone,
+                    contentDescription = null,
+                    tint = primary,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+            Column(modifier = Modifier.weight(1f).padding(horizontal = 12.dp)) {
+                Text(
+                    text = "已下载",
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Medium,
+                )
+                Text(
+                    text = if (count > 0) "$count 首 · 断网也能听" else "把整首歌存到本机，离线也能听",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 1.dp),
+                )
+            }
+            Icon(
+                imageVector = MusicIcons.ChevronRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                modifier = Modifier.size(18.dp),
+            )
+        }
     }
 }
 

@@ -61,6 +61,13 @@ class SettingsRepository(private val store: KeyValueStore) {
         MutableStateFlow(store.getInt(KEY_PLAYBACK_SPEED, DEFAULT_SPEED_PERCENT))
     val playbackSpeedPercent: StateFlow<Int> = _playbackSpeedPercent.asStateFlow()
 
+    /** 均衡器：开关 + 低 / 中 / 高三个频段（dB，-6..6）。服务侧按同一份值建效果器。 */
+    private val _audioFxEnabled = MutableStateFlow(store.getBoolean(KEY_AUDIO_FX_ENABLED, false))
+    val audioFxEnabled: StateFlow<Boolean> = _audioFxEnabled.asStateFlow()
+
+    private val _audioFxBands = MutableStateFlow(readAudioFxBands())
+    val audioFxBands: StateFlow<List<Int>> = _audioFxBands.asStateFlow()
+
     /** 主题偏好整包暴露：由若干设置 key 组成，UI 只订阅这一个 flow，接线更简单。 */
     private val _themeSpec = MutableStateFlow(readThemeSpec())
     val themeSpec: StateFlow<ThemeSpec> = _themeSpec.asStateFlow()
@@ -145,6 +152,27 @@ class SettingsRepository(private val store: KeyValueStore) {
         _playbackSpeedPercent.value = clamped
     }
 
+    fun setAudioFxEnabled(value: Boolean) {
+        store.putBoolean(KEY_AUDIO_FX_ENABLED, value)
+        _audioFxEnabled.value = value
+    }
+
+    /** [index]：0 低音、1 中频、2 高音；[db] 限制在 ±6 dB。 */
+    fun setAudioFxBand(index: Int, db: Int) {
+        if (index !in 0..2) return
+        val next = _audioFxBands.value.toMutableList()
+        next[index] = db.coerceIn(-6, 6)
+        _audioFxBands.value = next
+        store.putInt(AUDIO_FX_BAND_KEYS[index], next[index])
+    }
+
+    /** 播放服务现读：服务重建后按上次的音效设置恢复。 */
+    fun isAudioFxEnabledNow(): Boolean = store.getBoolean(KEY_AUDIO_FX_ENABLED, false)
+
+    fun audioFxBandsNow(): IntArray = IntArray(3) {
+        store.getInt(AUDIO_FX_BAND_KEYS[it], 0).coerceIn(-6, 6)
+    }
+
     fun setThemeMode(mode: ThemeMode) {
         store.putString(KEY_THEME_MODE, mode.key)
         _themeSpec.update { it.copy(mode = mode) }
@@ -224,6 +252,10 @@ class SettingsRepository(private val store: KeyValueStore) {
         store.putInt(KEY_DESKTOP_LYRIC_Y, y)
     }
 
+    private fun readAudioFxBands(): List<Int> = List(3) {
+        store.getInt(AUDIO_FX_BAND_KEYS[it], 0).coerceIn(-6, 6)
+    }
+
     private fun readBackgroundSpec(): BackgroundSpec = BackgroundSpec(
         type = BackgroundType.fromKey(store.getString(KEY_BACKGROUND_TYPE)),
         path = store.getString(KEY_BACKGROUND_PATH).orEmpty().ifBlank { null },
@@ -248,6 +280,8 @@ class SettingsRepository(private val store: KeyValueStore) {
         const val KEY_PLAY_MODE = "play_mode"
         const val KEY_SMART_TRANSITION = "smart_transition"
         const val KEY_PLAYBACK_SPEED = "playback_speed_percent"
+        const val KEY_AUDIO_FX_ENABLED = "audio_fx_enabled"
+        val AUDIO_FX_BAND_KEYS = listOf("audio_fx_low", "audio_fx_mid", "audio_fx_high")
         const val KEY_THEME_MODE = "theme_mode"
         const val KEY_SEED_SOURCE = "seed_source"
         const val KEY_FIXED_SEED = "fixed_seed_argb"

@@ -2,6 +2,7 @@ package com.musicbox.app.ui.home
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.musicbox.app.data.LikedStore
 import com.musicbox.app.data.NetEaseSession
 import com.musicbox.app.data.SessionStore
 import com.musicbox.app.model.PlaylistSummary
@@ -59,6 +60,7 @@ class HomeViewModel(
     private val personalApi: PersonalApi,
     private val loginApi: LoginApi,
     private val sessionStore: SessionStore,
+    private val likedStore: LikedStore,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(HomeUiState())
@@ -76,9 +78,8 @@ class HomeViewModel(
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message.asStateFlow()
 
-    /** 当前账号已喜欢的歌曲 id（来自「我喜欢的音乐」歌单）。游客态为空。 */
-    private val _likedSongIds = MutableStateFlow<Set<Long>>(emptySet())
-    val likedSongIds: StateFlow<Set<Long>> = _likedSongIds.asStateFlow()
+    /** 已喜欢的歌曲 id：直接来自本机仓库，通知栏按钮改动后播放页也能立刻反映。 */
+    val likedSongIds: StateFlow<Set<Long>> = likedStore.ids
 
     private var loadJob: Job? = null
     private var detailJob: Job? = null
@@ -93,6 +94,9 @@ class HomeViewModel(
 
     /** 已喜欢歌曲集合按 musicU 缓存，只在首次登录 / 换号时拉一次。 */
     private var likedIdsFetchedFor: String? = null
+
+    /** 上一次加载时登录的账号（musicU）；null 表示游客。用于区分"首次启动即游客"与"刚刚退出登录"。 */
+    private var lastMusicU: String? = null
 
     init {
         viewModelScope.launch {
@@ -179,45 +183,53 @@ class HomeViewModel(
                 error = null,
             )
 
-            // 喜欢状态：登录后拉一次「我喜欢的音乐」曲目 id，供播放页心形按钮显示真实状态。
-            // 游客态清空，避免残留上一个账号的数据。
+            // 喜欢状态：登录后拉一次「我喜欢的音乐」曲目，写进本机仓库供心形与通知栏共用。
+            // 仅在"刚退出登录"时清空；首次启动就是游客时保留本机收藏，不能把用户的收藏清掉。
+            val previousMusicU = lastMusicU
+            lastMusicU = if (s.isLoggedIn) s.musicU.orEmpty() else null
             if (!s.isLoggedIn) {
-                _likedSongIds.value = emptySet()
+                if (previousMusicU != null) likedStore.clear()
                 likedIdsFetchedFor = null
             } else if (liked != null && likedIdsFetchedFor != s.musicU) {
                 likedIdsFetchedFor = s.musicU
                 personalApi.playlistSongs(liked.id).onSuccess { songs ->
-                    _likedSongIds.value = songs.map { it.id }.toSet()
+                    likedStore.mergeRemote(songs)
                 }.onFailure { likedIdsFetchedFor = null }
             }
         }
     }
 
     /**
-     * 喜欢 / 取消喜欢当前歌曲，写入网易云「我喜欢的音乐」。
-     * 未登录时不发请求，直接提示。
+     * 喜欢 / 取消喜欢当前歌曲。
+     * 先改本机仓库（界面与通知栏立刻同步），登录后再写回网易云「我喜欢的音乐」；
+     * 写回失败时回滚，避免本机状态与账号长期不一致。
      */
-    fun toggleLike(songId: Long) {
-        if (songId <= 0) return
+    fun toggleLike(song: Song) {
+        if (song.id <= 0) return
+        val nextLiked = likedStore.toggle(song)
         val s = sessionStore.session.value
         if (!s.isLoggedIn) {
-            _message.value = "登录网易云后即可同步「我喜欢的音乐」"
+            _message.value = if (nextLiked) {
+                "已收藏到本机，登录网易云后可同步"
+            } else {
+                "已取消收藏"
+            }
             return
         }
-        val nextLiked = songId !in _likedSongIds.value
         viewModelScope.launch {
-            personalApi.likeSong(songId, nextLiked, s.userId)
+            personalApi.likeSong(song.id, nextLiked, s.userId)
                 .onSuccess {
-                    _likedSongIds.update { ids ->
-                        if (nextLiked) ids + songId else ids - songId
-                    }
                     _message.value = if (nextLiked) {
                         "已同步到网易云「我喜欢的音乐」"
                     } else {
                         "已从我喜欢的音乐移除"
                     }
                 }
-                .onFailure { e -> _message.value = e.toUserMessage() }
+                .onFailure { e ->
+                    // 回滚本机状态
+                    if (nextLiked) likedStore.remove(song.id) else likedStore.add(song)
+                    _message.value = e.toUserMessage()
+                }
         }
     }
 

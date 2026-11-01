@@ -36,6 +36,23 @@ class HistoryRepository(
         store.write(emptyList())
     }
 
+    /**
+     * 合并外部记录（备份恢复）。按歌曲 id 去重、按播放时间倒序、沿用总条数上限。
+     * 返回实际新增的条数。
+     */
+    fun merge(entries: List<HistoryEntry>): Int {
+        if (entries.isEmpty()) return 0
+        val ids = _history.value.mapTo(mutableSetOf()) { it.song.id }
+        val added = entries.filterNot { it.song.id in ids }
+        if (added.isEmpty()) return 0
+        val next = (_history.value + added)
+            .sortedByDescending { it.playedAtMs }
+            .take(maxEntries)
+        _history.value = next
+        store.write(next)
+        return added.size
+    }
+
     companion object {
         val listType: java.lang.reflect.Type =
             object : TypeToken<List<HistoryEntry>>() {}.type

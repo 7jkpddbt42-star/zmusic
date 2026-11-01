@@ -1,3 +1,10 @@
 <resources>
     <string name="app_name">z-music</string>
+    <string name="widget_idle_title">z-music</string>
+    <string name="widget_idle_subtitle">轻触打开播放页</string>
+    <string name="widget_cover_desc">当前歌曲封面</string>
+    <string name="widget_prev_desc">上一首</string>
+    <string name="widget_play_desc">播放</string>
+    <string name="widget_pause_desc">暂停</string>
+    <string name="widget_next_desc">下一首</string>
 </resources>

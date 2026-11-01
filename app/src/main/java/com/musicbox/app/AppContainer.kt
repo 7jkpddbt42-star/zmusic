@@ -6,12 +6,16 @@ import android.os.Build
 import androidx.compose.ui.graphics.Color
 import com.musicbox.app.data.AppLog
 import com.musicbox.app.data.BackgroundStore
+import com.musicbox.app.data.BackupRepository
 import com.musicbox.app.data.HistoryRepository
+import com.musicbox.app.data.Liked
+import com.musicbox.app.data.LikedStore
 import com.musicbox.app.data.LyricDiskCache
 import com.musicbox.app.data.ListeningStatsStore
 import com.musicbox.app.data.SessionStore
 import com.musicbox.app.data.SettingsRepository
 import com.musicbox.app.data.SharedPrefsKeyValueStore
+import com.musicbox.app.player.Downloads
 import com.musicbox.app.player.NetworkMonitor
 import com.musicbox.app.source.FailoverProvider
 import com.musicbox.app.source.MusicProvider
@@ -85,7 +89,16 @@ class AppContainer(context: Context) {
 
     val networkMonitor: NetworkMonitor = NetworkMonitor(appContext)
 
+    // 下载仓库提前初始化：播放链路与 ViewModel 都要在不带 Context 的地方查「是否已下载」
+    val downloads = Downloads.get(appContext)
+
+    /** 本机喜欢列表：播放页心形与通知栏喜欢按钮共用，服务侧也能直接读。 */
+    val liked: LikedStore = Liked.get(appContext)
+
     val history: HistoryRepository = HistoryRepository.forDir(filesDir("data"))
+
+    /** 收藏 / 播放记录的导出与恢复（设置页「备份与恢复」）。 */
+    val backup: BackupRepository = BackupRepository(liked, history)
 
     val lyricDiskCache: LyricDiskCache = LyricDiskCache.forDir(filesDir("lyrics"))
 

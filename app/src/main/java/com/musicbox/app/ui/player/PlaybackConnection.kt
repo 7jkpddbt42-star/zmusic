@@ -12,7 +12,12 @@ import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.ListenableFuture
 import com.musicbox.app.model.PlayMode
+import com.musicbox.app.player.ACTION_AUDIO_FX
 import com.musicbox.app.player.ACTION_SLEEP_TIMER
+import com.musicbox.app.player.ARG_FX_ENABLED
+import com.musicbox.app.player.ARG_FX_HIGH
+import com.musicbox.app.player.ARG_FX_LOW
+import com.musicbox.app.player.ARG_FX_MID
 import com.musicbox.app.player.ARG_SLEEP_MINUTES
 import com.musicbox.app.player.PlaybackService
 import com.musicbox.app.player.PositionSource
@@ -190,6 +195,25 @@ class PlaybackConnection(
     }
 
     fun clearError() = _state.update { it.copy(errorMessage = null) }
+
+    /**
+     * 均衡器：把开关与三段增益下发给播放服务。效果器挂在服务的 audio session 上，
+     * 界面只负责把用户的选择同步过去；会话尚未就绪时静默忽略。
+     */
+    fun setAudioFx(enabled: Boolean, bands: IntArray) {
+        val controller = _controller.value ?: return
+        val command = SessionCommand(ACTION_AUDIO_FX, Bundle.EMPTY)
+        if (!controller.availableSessionCommands.contains(command)) return
+        controller.sendCustomCommand(
+            command,
+            Bundle().apply {
+                putBoolean(ARG_FX_ENABLED, enabled)
+                putInt(ARG_FX_LOW, bands.getOrElse(0) { 0 })
+                putInt(ARG_FX_MID, bands.getOrElse(1) { 0 })
+                putInt(ARG_FX_HIGH, bands.getOrElse(2) { 0 })
+            },
+        )
+    }
 
     /**
      * 逐帧可读的当前位置。直接读 MediaController 的 currentPosition（毫秒精度），
