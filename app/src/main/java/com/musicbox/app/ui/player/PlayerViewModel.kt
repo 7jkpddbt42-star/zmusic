@@ -173,9 +173,30 @@ class PlayerViewModel(
         connection.controller.value?.setPlaybackSpeed(speed)
     }
 
-    /** 均衡器：把开关与三段增益下发给播放服务，立即生效。 */
+    /** 均衡器：把开关与五段增益下发给播放服务，立即生效。 */
     fun setAudioFx(enabled: Boolean, bands: List<Int>) {
-        connection.setAudioFx(enabled, IntArray(3) { bands.getOrElse(it) { 0 } })
+        connection.setAudioFx(enabled, IntArray(5) { bands.getOrElse(it) { 0 } })
+    }
+
+    /** 队列拖动排序：把 from 位置的歌移动到 to 位置。 */
+    fun moveQueueItem(from: Int, to: Int) {
+        val controller = connection.controller.value ?: return
+        if (from !in 0 until controller.mediaItemCount) return
+        if (to !in 0 until controller.mediaItemCount) return
+        if (from == to) return
+        controller.moveMediaItem(from, to)
+    }
+
+    /** 队列「下一首播放」：插到当前曲目后面。 */
+    fun playQueueItemNext(index: Int) {
+        val controller = connection.controller.value ?: return
+        if (index !in 0 until controller.mediaItemCount) return
+        val current = controller.currentMediaItemIndex
+        if (current == C.INDEX_UNSET) return
+        val target = (current + 1).coerceAtMost(controller.mediaItemCount - 1)
+        if (index == current || index == target) return
+        controller.moveMediaItem(index, target)
+        _message.value = "已设为下一首播放"
     }
 
     private fun formatRemaining(totalSeconds: Int): String =

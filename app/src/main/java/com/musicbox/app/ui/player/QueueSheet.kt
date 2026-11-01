@@ -9,6 +9,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -25,6 +26,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -36,6 +38,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -45,9 +48,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.musicbox.app.data.BackgroundSpec
@@ -62,6 +69,7 @@ import com.musicbox.app.ui.components.liquidglass.glassBackdropSource
 import com.musicbox.app.ui.components.liquidglass.rememberGlassBackdrop
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 /** 抽屉打开：自下而上滑入。 */
 private const val QUEUE_SLIDE_IN_MS = 340
@@ -104,6 +112,8 @@ internal fun QueueSheet(
     onDismiss: () -> Unit,
     onSelect: (Int) -> Unit,
     onRemove: (Int) -> Unit,
+    onPlayNext: (Int) -> Unit,
+    onMove: (Int, Int) -> Unit,
     onCycleMode: () -> Unit,
     sleepTimerLabel: String?,
     onSleepTimer: (Int) -> Unit,
@@ -113,6 +123,14 @@ internal fun QueueSheet(
     var shown by remember { mutableStateOf(false) }
     var closing by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+
+    // 拖动排序：只记录「哪一行在拖」与累计位移，松手时才真正重排。
+    // 如果拖动过程中逐行移动，列表 key 会跟着变，这一行的 pointerInput 会被重建、手势中断。
+    val listState = rememberLazyListState()
+    var dragPos by remember { mutableStateOf<Int?>(null) }
+    var dragOffset by remember { mutableFloatStateOf(0f) }
+    var rowHeightPx by remember { mutableFloatStateOf(0f) }
+    val fallbackRowHeightPx = with(LocalDensity.current) { 62.dp.toPx() }
 
     // 遮罩随抽屉一起过渡：进场 340ms、退场 260ms，与抽屉滑出同帧结束，
     // 避免抽屉已滑走、遮罩还剩一点暗色导致关闭瞬间闪一下。
@@ -309,6 +327,7 @@ internal fun QueueSheet(
                                 }
 
                                 LazyColumn(
+                                    state = listState,
                                     modifier = Modifier.fillMaxWidth().weight(1f),
                                     contentPadding = PaddingValues(
                                         start = 12.dp,
@@ -320,20 +339,31 @@ internal fun QueueSheet(
                                 ) {
                                     items(state.queue, key = { it.index }) { item ->
                                         val primary = MaterialTheme.colorScheme.primary
+                                        val dragging = dragPos == item.index
                                         Row(
                                             modifier = Modifier
                                                 .fillMaxWidth()
+                                                .zIndex(if (dragging) 1f else 0f)
+                                                .graphicsLayer {
+                                                    translationY = if (dragging) dragOffset else 0f
+                                                    val s = if (dragging) 1.02f else 1f
+                                                    scaleX = s
+                                                    scaleY = s
+                                                }
                                                 .clip(RoundedCornerShape(16.dp))
                                                 .background(
-                                                    if (item.isCurrent) primary.copy(alpha = 0.10f)
-                                                    else Color.Transparent,
+                                                    when {
+                                                        dragging -> primary.copy(alpha = 0.18f)
+                                                        item.isCurrent -> primary.copy(alpha = 0.10f)
+                                                        else -> Color.Transparent
+                                                    },
                                                 )
                                                 .clickable { onSelect(item.index) }
                                                 .padding(
                                                     start = 12.dp,
                                                     top = 10.dp,
                                                     bottom = 10.dp,
-                                                    end = 4.dp,
+                                                    end = 0.dp,
                                                 ),
                                             verticalAlignment = Alignment.CenterVertically,
                                         ) {
@@ -362,9 +392,76 @@ internal fun QueueSheet(
                                                     overflow = TextOverflow.Ellipsis,
                                                 )
                                             }
+                                            // 下一首播放：把这首插到当前曲目后面
+                                            IconButton(
+                                                onClick = { onPlayNext(item.index) },
+                                                modifier = Modifier.size(48.dp),
+                                                enabled = !item.isCurrent,
+                                            ) {
+                                                Icon(
+                                                    imageVector = MusicIcons.SkipNext,
+                                                    contentDescription = "下一首播放",
+                                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                                        .copy(alpha = if (item.isCurrent) 0.3f else 0.8f),
+                                                    modifier = Modifier.size(18.dp),
+                                                )
+                                            }
+                                            // 拖动手柄：按住上下拖动，松手后落到新位置
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(48.dp)
+                                                    .pointerInput(item.index, state.queue.size) {
+                                                        detectDragGestures(
+                                                            onDragStart = {
+                                                                dragPos = item.index
+                                                                dragOffset = 0f
+                                                                rowHeightPx =
+                                                                    listState.layoutInfo
+                                                                        .visibleItemsInfo
+                                                                        .firstOrNull { info ->
+                                                                            info.index == item.index
+                                                                        }?.size?.toFloat()
+                                                                        ?: fallbackRowHeightPx
+                                                            },
+                                                            onDragEnd = {
+                                                                val from = dragPos
+                                                                if (from != null) {
+                                                                    val steps = if (rowHeightPx > 0) {
+                                                                        (dragOffset / rowHeightPx)
+                                                                            .roundToInt()
+                                                                    } else {
+                                                                        0
+                                                                    }
+                                                                    val to = (from + steps)
+                                                                        .coerceIn(0, state.queue.size - 1)
+                                                                    if (to != from) onMove(from, to)
+                                                                }
+                                                                dragPos = null
+                                                                dragOffset = 0f
+                                                            },
+                                                            onDragCancel = {
+                                                                dragPos = null
+                                                                dragOffset = 0f
+                                                            },
+                                                            onDrag = { change, amount ->
+                                                                change.consume()
+                                                                dragOffset += amount.y
+                                                            },
+                                                        )
+                                                    },
+                                                contentAlignment = Alignment.Center,
+                                            ) {
+                                                Icon(
+                                                    imageVector = MusicIcons.DragHandle,
+                                                    contentDescription = "拖动排序",
+                                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                                        .copy(alpha = 0.6f),
+                                                    modifier = Modifier.size(18.dp),
+                                                )
+                                            }
                                             IconButton(
                                                 onClick = { onRemove(item.index) },
-                                                modifier = Modifier.size(40.dp),
+                                                modifier = Modifier.size(48.dp),
                                             ) {
                                                 Icon(
                                                     imageVector = MusicIcons.Trash,

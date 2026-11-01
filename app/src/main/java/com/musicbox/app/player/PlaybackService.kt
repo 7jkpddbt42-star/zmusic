@@ -203,11 +203,7 @@ class PlaybackService : MediaSessionService() {
             if (customCommand.customAction == ACTION_AUDIO_FX) {
                 applyAudioFx(
                     enabled = args.getBoolean(ARG_FX_ENABLED, false),
-                    bands = intArrayOf(
-                        args.getInt(ARG_FX_LOW, 0),
-                        args.getInt(ARG_FX_MID, 0),
-                        args.getInt(ARG_FX_HIGH, 0),
-                    ),
+                    bands = args.getIntArray(ARG_FX_BANDS) ?: intArrayOf(),
                 )
                 return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
             }
@@ -494,8 +490,8 @@ class PlaybackService : MediaSessionService() {
         const val RESOLVE_TIMEOUT_MS = 20_000L
         const val MAX_STREAM_ATTEMPTS = 3
 
-        /** 三个滑块对应的目标频率：低音 / 中频 / 高音。 */
-        val FX_FREQUENCIES = intArrayOf(100, 1000, 8000)
+        /** 五个滑块对应的目标频率：低频 / 中低 / 中 / 中高 / 高频。 */
+        val FX_FREQUENCIES = intArrayOf(80, 300, 1000, 3000, 8000)
     }
 }
 
@@ -504,12 +500,10 @@ const val ACTION_SLEEP_TIMER = "musicbox.sleep.timer"
 const val ARG_SLEEP_MINUTES = "minutes"
 const val SLEEP_AFTER_CURRENT = -1
 
-/** 均衡器自定义命令：开关 + 低 / 中 / 高三个频段增益（dB）。 */
+/** 均衡器自定义命令：开关 + 五段增益（dB，按低频 → 高频排列）。 */
 const val ACTION_AUDIO_FX = "musicbox.audio.fx"
 const val ARG_FX_ENABLED = "fx_enabled"
-const val ARG_FX_LOW = "fx_low"
-const val ARG_FX_MID = "fx_mid"
-const val ARG_FX_HIGH = "fx_high"
+const val ARG_FX_BANDS = "fx_bands"
 
 /** 通知栏喜欢按钮自定义命令。 */
 const val ACTION_NOTIFY_LIKE = "musicbox.notify.like"

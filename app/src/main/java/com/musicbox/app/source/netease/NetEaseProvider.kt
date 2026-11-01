@@ -26,6 +26,8 @@ class NetEaseProvider(
     private val session: () -> com.musicbox.app.data.NetEaseSession = { com.musicbox.app.data.NetEaseSession.Guest },
     /** 本地滚动日志。默认 null：既有单测无需注入，不破坏既有调用。 */
     private val appLog: com.musicbox.app.data.AppLog? = null,
+    /** 取流音质档位（standard / higher / exhigh）。每次请求现读，改设置后立即生效。 */
+    private val streamLevel: () -> String = { STREAM_LEVEL },
 ) : MusicProvider {
 
     override val id: String = "netease"
@@ -92,8 +94,8 @@ class NetEaseProvider(
             val payload = linkedMapOf<String, Any>(
                 // ids 必须是「字符串形式的 JSON 数组」，实测写成数字数组拿不到结果
                 "ids" to "[$songId]",
-                // 实测该档位对免费歌给到 320kbps，VIP 歌会自动降级为 standard + 试听片段
-                "level" to STREAM_LEVEL,
+                // 实测 exhigh 档位对免费歌给到 320kbps，VIP 歌会自动降级为 standard + 试听片段
+                "level" to streamLevel(),
                 // 实测取 mp3 即可，且 ExoPlayer 吃 mp3 最省事
                 "encodeType" to "mp3",
                 "e_r" to false,

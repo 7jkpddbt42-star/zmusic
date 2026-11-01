@@ -82,6 +82,7 @@ import com.musicbox.app.desktoplyric.DesktopLyricService
 import com.musicbox.app.model.Song
 import com.musicbox.app.player.DownloadState
 import com.musicbox.app.player.DownloadStates
+import com.musicbox.app.player.DownloadTasks
 import com.musicbox.app.player.Downloads
 import com.musicbox.app.player.SongDiskCache
 import com.musicbox.app.player.SongDownloader
@@ -315,8 +316,11 @@ private fun MusicBoxApp(
     val smartTransition by container.settings.smartTransition.collectAsStateWithLifecycle()
     val audioFxEnabled by container.settings.audioFxEnabled.collectAsStateWithLifecycle()
     val audioFxBands by container.settings.audioFxBands.collectAsStateWithLifecycle()
+    val customAudioFx by container.settings.customAudioFx.collectAsStateWithLifecycle()
+    val audioQuality by container.settings.audioQuality.collectAsStateWithLifecycle()
     // 已下载列表只在「下载完成 / 删除」时变化，收在顶层不会带来逐帧重组
     val downloadedSongs by container.downloads.songs.collectAsStateWithLifecycle()
+    val downloadTasks by DownloadTasks.tasks.collectAsStateWithLifecycle()
     val desktopLyricEnabled by container.settings.desktopLyricEnabled.collectAsStateWithLifecycle()
     val desktopLyricFontSp by container.settings.desktopLyricFontSp.collectAsStateWithLifecycle()
     val desktopLyricColorArgb by container.settings.desktopLyricColorArgb.collectAsStateWithLifecycle()
@@ -678,6 +682,7 @@ private fun MusicBoxApp(
                             ) { overlayModifier ->
                                 DownloadedScreen(
                                     songs = downloadedSongs,
+                                    tasks = downloadTasks,
                                     nowPlayingSongId = playState.currentSongId,
                                     onSongClick = { song ->
                                         val songs = downloadedSongs.map { it.song }
@@ -699,6 +704,25 @@ private fun MusicBoxApp(
                                             }
                                             snackbarHostState.showSnackbar("已清空所有下载")
                                         }
+                                    },
+                                    // 下载中 → 暂停；已暂停 / 失败 → 继续（有 .part 时自动续传）
+                                    onToggleTask = { task ->
+                                        val paused = task.state is DownloadState.Paused
+                                        val failed = task.state is DownloadState.Failed
+                                        if (task.state is DownloadState.InProgress) {
+                                            SongDownloader.pause(task.song.id)
+                                        } else {
+                                            SongDownloader.start(context, container.provider, task.song)
+                                        }
+                                        if (paused || failed) {
+                                            scope.launch {
+                                                snackbarHostState.showSnackbar("继续下载：${task.song.name}")
+                                            }
+                                        }
+                                    },
+                                    onCancelTask = { songId ->
+                                        SongDownloader.cancel(songId)
+                                        scope.launch { snackbarHostState.showSnackbar("已取消下载") }
                                     },
                                     onBack = { showDownloads = false },
                                     modifier = overlayModifier,
@@ -746,6 +770,23 @@ private fun MusicBoxApp(
                                         if (detail.songs.isNotEmpty()) {
                                             playerVm.play(detail.songs, 0)
                                             libraryVm.recordPlayed(detail.songs[0])
+                                        }
+                                    },
+                                    onDownloadAll = {
+                                        val pending = detail.songs.filter {
+                                            !container.downloads.isDownloaded(it.id)
+                                        }
+                                        pending.forEach {
+                                            SongDownloader.start(context, container.provider, it)
+                                        }
+                                        scope.launch {
+                                            snackbarHostState.showSnackbar(
+                                                if (pending.isEmpty()) {
+                                                    "这个歌单已经全部下载好了"
+                                                } else {
+                                                    "开始下载 ${pending.size} 首"
+                                                },
+                                            )
                                         }
                                     },
                                     onSongClick = { index ->
@@ -876,12 +917,22 @@ private fun MusicBoxApp(
                         snackbarHostState.showSnackbar("已下载到本机，可在「我的」→「已下载」里管理")
                     }
                     is DownloadState.InProgress -> {
-                        SongDownloader.cancel(song.id)
-                        scope.launch { snackbarHostState.showSnackbar("已取消下载") }
+                        SongDownloader.pause(song.id)
+                        scope.launch { snackbarHostState.showSnackbar("已暂停下载") }
                     }
                     else -> {
                         SongDownloader.start(context, container.provider, song)
-                        scope.launch { snackbarHostState.showSnackbar("开始下载：${song.name}") }
+                        scope.launch {
+                            val text = if (
+                                DownloadStates.stateFlow(context, song.id).value is
+                                DownloadState.Paused
+                            ) {
+                                "继续下载：${song.name}"
+                            } else {
+                                "开始下载：${song.name}"
+                            }
+                            snackbarHostState.showSnackbar(text)
+                        }
                     }
                 }
             },
@@ -990,6 +1041,8 @@ private fun MusicBoxApp(
             onDismiss = { showQueue = false },
             onSelect = { index -> playerVm.selectQueueItem(index) },
             onRemove = playerVm::removeQueueItem,
+            onPlayNext = playerVm::playQueueItemNext,
+            onMove = playerVm::moveQueueItem,
             onCycleMode = playerVm::cyclePlayMode,
             sleepTimerLabel = sleepTimerLabel,
             onSleepTimer = playerVm::setSleepTimer,
@@ -1027,6 +1080,8 @@ private fun MusicBoxApp(
             smartTransition = smartTransition,
             audioFxEnabled = audioFxEnabled,
             audioFxBands = audioFxBands,
+            customAudioFx = customAudioFx,
+            audioQuality = audioQuality,
             lyricCacheCount = container.lyricDiskCache.size(),
             backupLikedCount = likedSongIds.size,
             backupHistoryCount = history.size,
@@ -1072,6 +1127,19 @@ private fun MusicBoxApp(
             onAudioFxPreset = { bands ->
                 bands.forEachIndexed { index, db -> container.settings.setAudioFxBand(index, db) }
                 playerVm.setAudioFx(enabled = audioFxEnabled, bands = bands)
+            },
+            onSaveCustomAudioFx = {
+                container.settings.saveCustomAudioFx()
+                scope.launch { snackbarHostState.showSnackbar("已存为预设") }
+            },
+            onClearCustomAudioFx = container.settings::clearCustomAudioFx,
+            onAudioQuality = { quality ->
+                container.settings.setAudioQuality(quality)
+                // 已缓存的音频是按旧档位取的：清掉后下次切歌按新档位重新拉流
+                sharedSongStreamCache.clear()
+                scope.launch {
+                    snackbarHostState.showSnackbar("音质已切换为「${quality.label}」，下次播放生效")
+                }
             },
             onClearLyricCache = {
                 container.lyricDiskCache.clear()

@@ -42,6 +42,7 @@ fun PlaylistDetailScreen(
     nowPlayingSongId: Long?,
     onBack: () -> Unit,
     onPlayAll: () -> Unit,
+    onDownloadAll: () -> Unit,
     onSongClick: (Int) -> Unit,
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
@@ -54,6 +55,21 @@ fun PlaylistDetailScreen(
             GlassBackButton(onClick = onBack)
             Spacer(modifier = Modifier.weight(1f))
             if (state.songs.isNotEmpty()) {
+                GlassPill(onClick = onDownloadAll) {
+                    Icon(
+                        imageVector = MusicIcons.Download,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(13.dp),
+                    )
+                    Spacer(modifier = Modifier.width(5.dp))
+                    Text(
+                        text = "下载全部",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Spacer(modifier = Modifier.width(8.dp))
                 GlassPill(
                     onClick = onPlayAll,
                     tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),

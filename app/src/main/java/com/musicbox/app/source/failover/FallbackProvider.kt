@@ -31,6 +31,8 @@ class FallbackProvider(
     private val transport: HttpTransport,
     private val baseUrl: () -> String,
     private val gson: Gson = Gson(),
+    /** 与官方链路共用同一个音质设置，兜底时也按用户选定的档位取流。 */
+    private val streamLevel: () -> String = { "exhigh" },
 ) : MusicProvider {
 
     override val id: String = "fallback"
@@ -64,7 +66,7 @@ class FallbackProvider(
         val base = base()
         if (base.isEmpty()) return@withContext Result.failure(SourceError.NotConfigured())
         try {
-            val url = "$base/song/url/v1?id=$songId&level=exhigh"
+            val url = "$base/song/url/v1?id=$songId&level=${streamLevel()}"
             val body = transport.get(url, HEADERS).body
             val dto = parse(body, SongUrlRespDto::class.java)
             if (dto.code != 200) throw SourceError.Api(dto.code, null)

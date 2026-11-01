@@ -132,11 +132,13 @@ class AppContainer(context: Context) {
         deviceId = deviceId,
         session = { sessionStore.session.value },
         appLog = log,
+        streamLevel = { settings.streamLevelNow() },
     )
 
     private val fallbackProvider: MusicProvider = FallbackProvider(
         transport = transport,
         baseUrl = { settings.fallbackBaseUrl.value },
+        streamLevel = { settings.streamLevelNow() },
     )
 
     /**

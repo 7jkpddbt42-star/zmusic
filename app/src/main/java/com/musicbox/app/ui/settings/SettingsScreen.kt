@@ -47,6 +47,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.musicbox.app.data.AudioQuality
 import com.musicbox.app.data.BackgroundBlur
 import com.musicbox.app.data.BackgroundSpec
 import com.musicbox.app.data.LyricStyle
@@ -95,6 +96,8 @@ fun SettingsScreen(
     smartTransition: Boolean,
     audioFxEnabled: Boolean,
     audioFxBands: List<Int>,
+    customAudioFx: List<Int>?,
+    audioQuality: AudioQuality,
     lyricCacheCount: Int,
     songCacheBytes: Long,
     backupLikedCount: Int,
@@ -116,6 +119,9 @@ fun SettingsScreen(
     onAudioFxEnabled: (Boolean) -> Unit,
     onAudioFxBand: (Int, Int) -> Unit,
     onAudioFxPreset: (List<Int>) -> Unit,
+    onSaveCustomAudioFx: () -> Unit,
+    onClearCustomAudioFx: () -> Unit,
+    onAudioQuality: (AudioQuality) -> Unit,
     onClearLyricCache: () -> Unit,
     onClearSongCache: () -> Unit,
     onExportBackup: () -> Unit,
@@ -392,12 +398,12 @@ fun SettingsScreen(
                 ) {
                     Column(modifier = Modifier.fillMaxWidth()) {
                         Text(
-                            "低 / 中 / 高三段增益，范围 ±6 dB，只作用于本应用播放的声音。",
+                            "低频 / 中低 / 中频 / 中高 / 高频五段增益，范围 ±6 dB，只作用于本应用播放的声音。",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(top = 4.dp),
                         )
-                        // 预设：一次把三段增益填好，仍可继续手动微调
+                        // 预设：一次把五段增益填好，仍可继续手动微调
                         Text(
                             "预设",
                             style = MaterialTheme.typography.bodyMedium,
@@ -415,9 +421,27 @@ fun SettingsScreen(
                                 )
                             }
                         }
-                        AudioFxBandRow("低音", audioFxBands.getOrElse(0) { 0 }) { onAudioFxBand(0, it) }
-                        AudioFxBandRow("中频", audioFxBands.getOrElse(1) { 0 }) { onAudioFxBand(1, it) }
-                        AudioFxBandRow("高音", audioFxBands.getOrElse(2) { 0 }) { onAudioFxBand(2, it) }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            // 自定义预设放在按钮行：四个预设已经占满一行，再加一颗会被挤窄
+                            customAudioFx?.let { bands ->
+                                ChoiceChip(
+                                    label = "自定义",
+                                    selected = audioFxBands == bands,
+                                    onClick = { onAudioFxPreset(bands) },
+                                )
+                            }
+                            TextButton(onClick = onSaveCustomAudioFx) {
+                                Text(if (customAudioFx == null) "存为预设" else "更新预设")
+                            }
+                            if (customAudioFx != null) {
+                                TextButton(onClick = onClearCustomAudioFx) { Text("删除") }
+                            }
+                        }
+                        AUDIO_FX_BAND_LABELS.forEachIndexed { index, label ->
+                            AudioFxBandRow(label, audioFxBands.getOrElse(index) { 0 }) {
+                                onAudioFxBand(index, it)
+                            }
+                        }
                     }
                 }
             }
@@ -546,6 +570,25 @@ fun SettingsScreen(
 
             SettingsGroup {
                 Text("音源", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "音质",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(top = 12.dp),
+                )
+                Row(modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
+                    AudioQuality.values().forEach { quality ->
+                        ChoiceChip(quality.label, audioQuality == quality) {
+                            onAudioQuality(quality)
+                        }
+                    }
+                }
+                Text(
+                    "标准 128kbps / 较高 192kbps / 极高 320kbps。切歌时生效，" +
+                        "超出会员权限的曲目会自动降级到可用的最高档。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
                 Text(
                     "听歌模式",
                     style = MaterialTheme.typography.bodyMedium,
@@ -751,14 +794,17 @@ private fun ChoiceChip(
     }
 }
 
-/** 均衡器预设：三段增益（低 / 中 / 高），单位 dB，范围与滑杆一致（±6）。 */
+/** 均衡器预设：五段增益（低频 / 中低 / 中频 / 中高 / 高频），单位 dB，范围与滑杆一致（±6）。 */
 private data class AudioFxPreset(val label: String, val bands: List<Int>)
 
+/** 频段名称与 [SettingsRepository.AUDIO_FX_BAND_KEYS] 顺序一一对应。 */
+private val AUDIO_FX_BAND_LABELS = listOf("低频", "中低", "中频", "中高", "高频")
+
 private val AUDIO_FX_PRESETS = listOf(
-    AudioFxPreset("平直", listOf(0, 0, 0)),
-    AudioFxPreset("流行", listOf(2, -1, 1)),
-    AudioFxPreset("摇滚", listOf(4, -2, 2)),
-    AudioFxPreset("人声", listOf(0, 3, -1)),
+    AudioFxPreset("平直", listOf(0, 0, 0, 0, 0)),
+    AudioFxPreset("流行", listOf(2, 1, 0, 1, 2)),
+    AudioFxPreset("摇滚", listOf(4, 2, -1, 2, 3)),
+    AudioFxPreset("人声", listOf(0, 1, 3, 1, -1)),
 )
 
 /**

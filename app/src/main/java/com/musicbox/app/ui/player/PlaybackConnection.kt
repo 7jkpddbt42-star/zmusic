@@ -14,10 +14,8 @@ import com.google.common.util.concurrent.ListenableFuture
 import com.musicbox.app.model.PlayMode
 import com.musicbox.app.player.ACTION_AUDIO_FX
 import com.musicbox.app.player.ACTION_SLEEP_TIMER
+import com.musicbox.app.player.ARG_FX_BANDS
 import com.musicbox.app.player.ARG_FX_ENABLED
-import com.musicbox.app.player.ARG_FX_HIGH
-import com.musicbox.app.player.ARG_FX_LOW
-import com.musicbox.app.player.ARG_FX_MID
 import com.musicbox.app.player.ARG_SLEEP_MINUTES
 import com.musicbox.app.player.PlaybackService
 import com.musicbox.app.player.PositionSource
@@ -95,8 +93,16 @@ class PlaybackConnection(
     private val _state = MutableStateFlow(PlaybackUiState())
     val state: StateFlow<PlaybackUiState> = _state.asStateFlow()
 
+    // 队列结构变化标记：timeline 事件置位，下次快照重建时清掉
+    private var queueDirty = false
+
     private val listener = object : Player.Listener {
-        override fun onEvents(player: Player, events: Player.Events) = refresh(player)
+        override fun onEvents(player: Player, events: Player.Events) {
+            // 增删 / 拖动换序都会发 timeline 事件；只靠队列长度和当前索引判断会漏掉换序，
+            // 表现出来就是「点了下一首播放 / 拖完松手，面板顺序没变」。
+            if (events.containsAny(Player.EVENT_TIMELINE_CHANGED)) queueDirty = true
+            refresh(player)
+        }
 
         override fun onPlayerError(error: PlaybackException) {
             // 取流失败 / 版权不可播：显式提示并自动跳下一首（设计文档 §9）
@@ -208,9 +214,7 @@ class PlaybackConnection(
             command,
             Bundle().apply {
                 putBoolean(ARG_FX_ENABLED, enabled)
-                putInt(ARG_FX_LOW, bands.getOrElse(0) { 0 })
-                putInt(ARG_FX_MID, bands.getOrElse(1) { 0 })
-                putInt(ARG_FX_HIGH, bands.getOrElse(2) { 0 })
+                putIntArray(ARG_FX_BANDS, bands)
             },
         )
     }
@@ -242,12 +246,14 @@ class PlaybackConnection(
             // 队列每 250ms 才刷新一次位置，如果每次都重建整条 QueueItem 列表，
             // 一首歌 30 首队列就是每秒 120 次多余对象分配；只在队列结构真正变化时重建。
             val queue = if (
+                !queueDirty &&
                 previous.queue.size == controller.mediaItemCount &&
                 previous.currentIndex == index &&
                 previous.currentSongId == songId
             ) {
                 previous.queue
             } else {
+                queueDirty = false
                 queueOf(controller)
             }
             previous.copy(

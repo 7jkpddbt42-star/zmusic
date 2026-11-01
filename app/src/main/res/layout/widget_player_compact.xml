@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  2x1 紧凑版桌面小组件：一行内放下封面 + 歌名 / 歌手 + 播放 + 下一首。
+  尺寸缩到 2x1 时由 PlayerWidgetProvider 按选项宽度/高度切换到这张布局；
+  只保留最常用的两个按键，避免在窄空间里挤成一排看不清。
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_bg"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:padding="8dp">
+
+    <ImageView
+        android:id="@+id/widget_cover"
+        android:layout_width="34dp"
+        android:layout_height="34dp"
+        android:background="@drawable/widget_cover_bg"
+        android:clipToOutline="true"
+        android:contentDescription="@string/widget_cover_desc"
+        android:scaleType="centerCrop" />
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="8dp"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/widget_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:fontFamily="sans-serif-medium"
+            android:maxLines="1"
+            android:text="@string/widget_idle_title"
+            android:textColor="#FFFFFFFF"
+            android:textSize="13sp" />
+
+        <TextView
+            android:id="@+id/widget_artist"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="1dp"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:text="@string/widget_idle_subtitle"
+            android:textColor="#B3FFFFFF"
+            android:textSize="10sp" />
+    </LinearLayout>
+
+    <ImageButton
+        android:id="@+id/widget_play"
+        android:layout_width="34dp"
+        android:layout_height="34dp"
+        android:layout_marginStart="6dp"
+        android:background="@drawable/widget_control_primary_bg"
+        android:contentDescription="@string/widget_play_desc"
+        android:padding="9dp"
+        android:scaleType="centerInside"
+        android:src="@drawable/ic_widget_play" />
+
+    <ImageButton
+        android:id="@+id/widget_next"
+        android:layout_width="30dp"
+        android:layout_height="30dp"
+        android:layout_marginStart="4dp"
+        android:background="@drawable/widget_control_bg"
+        android:contentDescription="@string/widget_next_desc"
+        android:padding="8dp"
+        android:scaleType="centerInside"
+        android:src="@drawable/ic_widget_next" />
+</LinearLayout>

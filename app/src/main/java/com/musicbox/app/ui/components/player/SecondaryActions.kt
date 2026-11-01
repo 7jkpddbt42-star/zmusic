@@ -179,6 +179,7 @@ private fun DownloadItem(
     val state by action.state.collectAsState()
     val label = when (state) {
         is DownloadState.InProgress -> "下载中"
+        is DownloadState.Paused -> "继续下载"
         DownloadState.Done -> "已下载"
         is DownloadState.Failed -> "重试"
         null -> "下载"
@@ -187,7 +188,14 @@ private fun DownloadItem(
     val tint = when (state) {
         DownloadState.Done -> Color(0xFF6FD8A6)
         is DownloadState.Failed -> Color(0xFFFF8A8A)
+        is DownloadState.Paused -> Color(0xFFFFC66D)
         else -> foreground.copy(alpha = 0.82f)
+    }
+    // 暂停时保留进度环，并在底部加一条短横线表示「已停住」
+    val ringProgress = when (val current = state) {
+        is DownloadState.InProgress -> current.progress
+        is DownloadState.Paused -> current.progress
+        else -> null
     }
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
@@ -203,17 +211,16 @@ private fun DownloadItem(
                 tint = tint,
                 modifier = Modifier.size(iconSize),
             )
-            if (state is DownloadState.InProgress) {
-                val inProgress = state as DownloadState.InProgress
+            if (ringProgress != null) {
                 // 进度环压在图标外圈，既不挡住图标，也能表达具体进度
                 CircularProgressIndicator(
-                    progress = { if (inProgress.progress < 0f) 0f else inProgress.progress },
+                    progress = { if (ringProgress < 0f) 0f else ringProgress },
                     modifier = Modifier.size(itemSize - 4.dp),
                     strokeWidth = 1.6.dp,
-                    color = foreground.copy(alpha = 0.75f),
+                    color = tint.copy(alpha = 0.75f),
                     trackColor = Color.Transparent,
                 )
-                if (inProgress.progress < 0f) {
+                if (ringProgress < 0f) {
                     // 拿不到总长度时退回不确定进度（会自己转）
                     CircularProgressIndicator(
                         modifier = Modifier.size(itemSize - 4.dp),

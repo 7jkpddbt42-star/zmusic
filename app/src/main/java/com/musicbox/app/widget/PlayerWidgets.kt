@@ -15,6 +15,7 @@ import android.graphics.Paint
 import android.graphics.RectF
 import android.graphics.Shader
 import android.os.Build
+import android.os.Bundle
 import android.os.Handler
 import android.view.View
 import android.widget.RemoteViews
@@ -211,6 +212,16 @@ class PlayerWidgetProvider : AppWidgetProvider() {
         WidgetBridge.updater?.onSongChanged()
     }
 
+    /** 用户拖动改变尺寸：立即按新尺寸在标准版 / 紧凑版之间切换，不必等下一次刷新。 */
+    override fun onAppWidgetOptionsChanged(
+        context: Context,
+        appWidgetManager: AppWidgetManager,
+        appWidgetId: Int,
+        newOptions: Bundle,
+    ) {
+        render(context, appWidgetManager, appWidgetId)
+    }
+
     companion object {
 
         fun hasWidgets(context: Context): Boolean {
@@ -230,7 +241,12 @@ class PlayerWidgetProvider : AppWidgetProvider() {
         }
 
         private fun render(context: Context, manager: AppWidgetManager, appWidgetId: Int) {
-            val views = RemoteViews(context.packageName, R.layout.widget_player)
+            // 组件允许缩到 2x1：按当前占位尺寸在「标准版」和「紧凑版」之间切换布局
+            val compact = isCompact(manager, appWidgetId)
+            val views = RemoteViews(
+                context.packageName,
+                if (compact) R.layout.widget_player_compact else R.layout.widget_player,
+            )
             val snapshot = WidgetStore.read(context)
 
             views.setTextViewText(
@@ -242,12 +258,14 @@ class PlayerWidgetProvider : AppWidgetProvider() {
                 snapshot.subtitle.ifBlank { context.getString(R.string.widget_idle_subtitle) },
             )
 
-            // 歌词只在有歌且有内容时显示，剩余空间由歌名/歌手占满
-            if (snapshot.hasSong && snapshot.lyric.isNotBlank()) {
-                views.setTextViewText(R.id.widget_lyric, snapshot.lyric)
-                views.setViewVisibility(R.id.widget_lyric, View.VISIBLE)
-            } else {
-                views.setViewVisibility(R.id.widget_lyric, View.GONE)
+            // 歌词只在标准版有位置可放；紧凑版把空间让给歌名
+            if (!compact) {
+                if (snapshot.hasSong && snapshot.lyric.isNotBlank()) {
+                    views.setTextViewText(R.id.widget_lyric, snapshot.lyric)
+                    views.setViewVisibility(R.id.widget_lyric, View.VISIBLE)
+                } else {
+                    views.setViewVisibility(R.id.widget_lyric, View.GONE)
+                }
             }
 
             val cover = if (snapshot.hasSong) WidgetStore.cover(context) else null
@@ -258,10 +276,13 @@ class PlayerWidgetProvider : AppWidgetProvider() {
             val playIcon = if (snapshot.isPlaying) R.drawable.ic_widget_pause else R.drawable.ic_widget_play
             views.setImageViewResource(R.id.widget_play, playIcon)
 
-            val likeIcon = if (snapshot.liked) R.drawable.ic_widget_heart_filled else R.drawable.ic_widget_heart
-            views.setImageViewResource(R.id.widget_like, likeIcon)
-            // 没有歌的时候心形不可点，避免点了没反应
-            views.setBoolean(R.id.widget_like, "setEnabled", snapshot.hasSong)
+            if (!compact) {
+                val likeIcon =
+                    if (snapshot.liked) R.drawable.ic_widget_heart_filled else R.drawable.ic_widget_heart
+                views.setImageViewResource(R.id.widget_like, likeIcon)
+                // 没有歌的时候心形不可点，避免点了没反应
+                views.setBoolean(R.id.widget_like, "setEnabled", snapshot.hasSong)
+            }
 
             // RemoteViews#setContentDescription 是 Android 12 才有的 API，旧版本跳过即可
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -271,19 +292,23 @@ class PlayerWidgetProvider : AppWidgetProvider() {
                         if (snapshot.isPlaying) R.string.widget_pause_desc else R.string.widget_play_desc,
                     ),
                 )
-                views.setContentDescription(
-                    R.id.widget_like,
-                    context.getString(
-                        if (snapshot.liked) R.string.widget_unlike_desc else R.string.widget_like_desc,
-                    ),
-                )
+                if (!compact) {
+                    views.setContentDescription(
+                        R.id.widget_like,
+                        context.getString(
+                            if (snapshot.liked) R.string.widget_unlike_desc else R.string.widget_like_desc,
+                        ),
+                    )
+                }
             }
 
             views.setOnClickPendingIntent(R.id.widget_root, openApp(context))
-            views.setOnClickPendingIntent(
-                R.id.widget_prev,
-                action(context, ACTION_WIDGET_PREVIOUS, 1),
-            )
+            if (!compact) {
+                views.setOnClickPendingIntent(
+                    R.id.widget_prev,
+                    action(context, ACTION_WIDGET_PREVIOUS, 1),
+                )
+            }
             views.setOnClickPendingIntent(
                 R.id.widget_play,
                 action(context, ACTION_WIDGET_TOGGLE, 2),
@@ -292,12 +317,22 @@ class PlayerWidgetProvider : AppWidgetProvider() {
                 R.id.widget_next,
                 action(context, ACTION_WIDGET_NEXT, 3),
             )
-            views.setOnClickPendingIntent(
-                R.id.widget_like,
-                action(context, ACTION_WIDGET_LIKE, 4),
-            )
+            if (!compact) {
+                views.setOnClickPendingIntent(
+                    R.id.widget_like,
+                    action(context, ACTION_WIDGET_LIKE, 4),
+                )
+            }
 
             manager.updateAppWidget(appWidgetId, views)
+        }
+
+        /** 高度不足两格或宽度不足四格时用紧凑版；未拿到尺寸（旧启动器）按标准版处理。 */
+        private fun isCompact(manager: AppWidgetManager, appWidgetId: Int): Boolean {
+            val options = manager.getAppWidgetOptions(appWidgetId)
+            val minWidth = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 0)
+            val minHeight = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 0)
+            return (minWidth in 1..219) || (minHeight in 1..109)
         }
 
         private fun openApp(context: Context): PendingIntent {

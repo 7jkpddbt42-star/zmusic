@@ -17,6 +17,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import okhttp3.Call
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -37,11 +39,38 @@ data class DownloadedSong(
 /**
  * 单曲下载状态，供播放页按钮与「已下载」列表展示。
  * [InProgress.progress] 为 0..1；拿不到 Content-Length 时为负数（不确定进度）。
+ * [Paused] 表示用户手动暂停：半截 `.part` 留在磁盘上，继续时用 Range 续传。
  */
 sealed interface DownloadState {
     data class InProgress(val progress: Float) : DownloadState
+    data class Paused(val progress: Float) : DownloadState
     data object Done : DownloadState
     data class Failed(val message: String) : DownloadState
+}
+
+/** 「已下载」页里正在下载 / 暂停 / 失败的条目。 */
+data class DownloadTask(val song: Song, val state: DownloadState)
+
+/**
+ * 未完成下载的进程级清单（不含已下载完成的歌，那些走 [DownloadStore]）。
+ * 列表页只订阅这一份，下载进度变化不会牵动歌曲列表本身。
+ */
+object DownloadTasks {
+
+    private val _tasks = MutableStateFlow<List<DownloadTask>>(emptyList())
+    val tasks: StateFlow<List<DownloadTask>> = _tasks.asStateFlow()
+
+    fun set(task: DownloadTask) {
+        _tasks.value = _tasks.value.filterNot { it.song.id == task.song.id } + task
+    }
+
+    fun remove(songId: Long) {
+        _tasks.value = _tasks.value.filterNot { it.song.id == songId }
+    }
+
+    fun clear() {
+        _tasks.value = emptyList()
+    }
 }
 
 /**
@@ -215,22 +244,48 @@ object SongDownloader {
 
     private val lock = Any()
 
-    /** 开始下载。[song] 只用来写索引，音频地址在下载时现取。 */
+    // 最近一次进度，暂停时用它把「暂停在 37%」如实展示出来
+    private val lastProgress = mutableMapOf<Long, Float>()
+
+    // 「下载全部」会一次提交整张歌单：限制并发，避免同时开出几十上百条连接
+    private val gate = Semaphore(3)
+
+    /**
+     * 开始（或继续）下载。[song] 只用来写索引，音频地址在下载时现取。
+     * 磁盘上已有 `.part` 时自动用 Range 续传，所以「暂停 → 继续」「失败 → 重试」是同一个入口。
+     */
     fun start(context: Context, provider: MusicProvider, song: Song) {
         val appContext = context.applicationContext
         val store = Downloads.get(appContext)
         if (store.isDownloaded(song.id)) return
         synchronized(lock) {
             if (jobs[song.id]?.isActive == true) return
-            DownloadStates.set(song.id, DownloadState.InProgress(0f))
+            val resumed = store.partFile(song.id).length() > 0
+            val initial = if (resumed) {
+                (lastProgress[song.id] ?: 0f).coerceIn(0f, 0.99f)
+            } else {
+                0f
+            }
+            report(song, DownloadState.InProgress(initial))
             jobs[song.id] = scope.launch {
-                val result = runCatching { fetchWithRetry(appContext, provider, song) }
+                val result = runCatching {
+                    gate.withPermit { fetchWithRetry(appContext, provider, song) }
+                }
                 val error = result.exceptionOrNull()
                 when {
-                    result.isSuccess -> DownloadStates.set(song.id, DownloadState.Done)
-                    // 用户取消：cancel() 已经把状态清成 null，这里不要再盖成「失败」
+                    result.isSuccess -> {
+                        lastProgress.remove(song.id)
+                        DownloadStates.set(song.id, DownloadState.Done)
+                        DownloadTasks.remove(song.id)
+                    }
+                    // 用户暂停 / 取消：对应方法已经写好状态，这里不要再盖成「失败」
                     error is CancellationException -> Unit
-                    else -> DownloadStates.set(song.id, DownloadState.Failed(humanMessage(error)))
+                    else -> {
+                        // 失败保留 .part：下次重试可以续传，不必从头再来
+                        val message = humanMessage(error)
+                        DownloadStates.set(song.id, DownloadState.Failed(message))
+                        DownloadTasks.set(DownloadTask(song, DownloadState.Failed(message)))
+                    }
                 }
                 synchronized(lock) {
                     jobs.remove(song.id)
@@ -240,20 +295,36 @@ object SongDownloader {
         }
     }
 
+    /** 暂停：停掉 IO 但保留 `.part`，继续时从断点续传。 */
+    fun pause(songId: Long) {
+        val progress: Float
+        synchronized(lock) {
+            progress = lastProgress[songId] ?: 0f
+            jobs.remove(songId)?.cancel()
+            calls.remove(songId)?.cancel()
+        }
+        val task = DownloadTasks.tasks.value.firstOrNull { it.song.id == songId } ?: return
+        DownloadStates.set(songId, DownloadState.Paused(progress))
+        DownloadTasks.set(task.copy(state = DownloadState.Paused(progress)))
+    }
+
     fun cancel(songId: Long) {
         synchronized(lock) {
             jobs.remove(songId)?.cancel()
             calls.remove(songId)?.cancel()
+            lastProgress.remove(songId)
         }
         // 取消后回到「未下载」：半截文件不留在磁盘上，下次点下载是干净的一次
         Downloads.peek()?.partFile(songId)?.let { runCatching { it.delete() } }
         DownloadStates.set(songId, null)
+        DownloadTasks.remove(songId)
     }
 
     /** 删除下载后同步状态，避免残留「已下载」或「失败」的展示。 */
     fun clear(songId: Long) {
         Downloads.peek()?.partFile(songId)?.let { runCatching { it.delete() } }
         DownloadStates.set(songId, null)
+        DownloadTasks.remove(songId)
     }
 
     /** 清空全部下载：先停掉进行中的任务，再复位状态，避免「文件没了但按钮还显示已下载」。 */
@@ -263,12 +334,20 @@ object SongDownloader {
             jobs.clear()
             calls.values.forEach { it.cancel() }
             calls.clear()
+            lastProgress.clear()
         }
         DownloadStates.clearAll()
+        DownloadTasks.clear()
     }
 
     private fun set(songId: Long, state: DownloadState) {
         DownloadStates.set(songId, state)
+    }
+
+    /** 同时更新「播放页按钮」与「已下载页任务行」两份状态。 */
+    private fun report(song: Song, state: DownloadState) {
+        set(song.id, state)
+        DownloadTasks.set(DownloadTask(song, state))
     }
 
     /**
@@ -298,7 +377,8 @@ object SongDownloader {
 
     /**
      * 取流地址 → 边下边写临时文件 → 成功后 rename 成正式文件并写索引。
-     * 用 .part 临时文件：中途失败不会留下一个「看起来已下载」的半截文件。
+     * 用 .part 临时文件：中途失败不会留下一个「看起来已下载」的半截文件；
+     * 已有 .part 时用 `Range: bytes=N-` 续传，服务器不支持（返回 200）则从头写。
      */
     private suspend fun fetch(context: Context, provider: MusicProvider, song: Song) {
         val info = provider.getStreamUrl(song.id).getOrElse {
@@ -308,28 +388,54 @@ object SongDownloader {
         val target = store.fileFor(song.id)
         target.parentFile?.mkdirs()
         val tmp = store.partFile(song.id)
-        // 上一次失败 / 取消留下的半截文件，从头写
-        runCatching { tmp.delete() }
+        val existing = tmp.length().takeIf { it > 0 } ?: 0L
 
-        val call = client.newCall(Request.Builder().url(info.url).build())
+        val request = Request.Builder()
+            .url(info.url)
+            .apply { if (existing > 0) header("Range", "bytes=$existing-") }
+            .build()
+        val call = client.newCall(request)
         synchronized(lock) { calls[song.id] = call }
         try {
             call.execute().use { response ->
+                // 416：断点比服务端文件还长（文件变了），删掉半截文件让下一轮从头下载
+                if (response.code == 416) {
+                    runCatching { tmp.delete() }
+                    throw IOException("续传失败")
+                }
                 if (!response.isSuccessful) throw IOException("HTTP ${response.code}")
+                // 只有 206 才算真的续上了；返回 200 说明服务端不支持 Range，从头写
+                val append = existing > 0 && response.code == 206
+                if (!append) runCatching { tmp.delete() }
+
+                val start = if (append) existing else 0L
                 // OkHttp 5 起 Response.body 非空，不需要再判空
-                val total = response.body.contentLength()
+                val length = response.body.contentLength()
+                val total = if (length > 0) start + length else -1L
+                var written = start
+                var lastShown = -1
 
                 response.body.byteStream().use { input ->
-                    tmp.outputStream().use { output ->
+                    java.io.FileOutputStream(tmp, append).use { output ->
                         val buffer = ByteArray(64 * 1024)
-                        var read = 0L
                         while (true) {
                             val count = input.read(buffer)
                             if (count < 0) break
                             output.write(buffer, 0, count)
-                            read += count
-                            if (total > 0) {
-                                set(song.id, DownloadState.InProgress(read.toFloat() / total))
+                            written += count
+                            val progress = if (total > 0) written.toFloat() / total else -1f
+                            synchronized(lock) {
+                                lastProgress[song.id] = progress.coerceIn(0f, 0.99f)
+                            }
+                            // 每 2% 才刷一次列表：进度太密会把整页重组拖慢
+                            val step =
+                                if (progress >= 0f) (progress * 50).toInt() else (written / 262144).toInt()
+                            if (step != lastShown) {
+                                lastShown = step
+                                set(song.id, DownloadState.InProgress(progress))
+                                DownloadTasks.set(
+                                    DownloadTask(song, DownloadState.InProgress(progress)),
+                                )
                             }
                         }
                         output.flush()

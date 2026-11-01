@@ -24,6 +24,22 @@ enum class LyricStyle(val key: String) {
     }
 }
 
+/**
+ * 取流音质。level 是网易云取流接口的档位名：
+ * standard=128kbps、higher=192kbps、exhigh=320kbps。
+ * VIP 曲目会自动降级，不需要额外处理。
+ */
+enum class AudioQuality(val label: String, val level: String) {
+    Standard("标准", "standard"),
+    Higher("较高", "higher"),
+    Exhigh("极高", "exhigh");
+
+    companion object {
+        fun fromKey(value: String?): AudioQuality =
+            values().firstOrNull { it.level == value } ?: Exhigh
+    }
+}
+
 /** 用户偏好。译文/罗马音默认开关在 MI-3 是内存态，本里程碑起持久化。 */
 class SettingsRepository(private val store: KeyValueStore) {
 
@@ -65,8 +81,18 @@ class SettingsRepository(private val store: KeyValueStore) {
     private val _audioFxEnabled = MutableStateFlow(store.getBoolean(KEY_AUDIO_FX_ENABLED, false))
     val audioFxEnabled: StateFlow<Boolean> = _audioFxEnabled.asStateFlow()
 
+    /** 均衡器五段增益：低频 / 中低 / 中 / 中高 / 高频（dB，-6..6）。 */
     private val _audioFxBands = MutableStateFlow(readAudioFxBands())
     val audioFxBands: StateFlow<List<Int>> = _audioFxBands.asStateFlow()
+
+    /** 用户自己存下的一条曲线；null 表示还没存过。 */
+    private val _customAudioFx = MutableStateFlow(readCustomAudioFx())
+    val customAudioFx: StateFlow<List<Int>?> = _customAudioFx.asStateFlow()
+
+    /** 取流音质，默认极高（免费歌实测可拿到 320kbps）。 */
+    private val _audioQuality =
+        MutableStateFlow(AudioQuality.fromKey(store.getString(KEY_STREAM_LEVEL)))
+    val audioQuality: StateFlow<AudioQuality> = _audioQuality.asStateFlow()
 
     /** 主题偏好整包暴露：由若干设置 key 组成，UI 只订阅这一个 flow，接线更简单。 */
     private val _themeSpec = MutableStateFlow(readThemeSpec())
@@ -157,19 +183,47 @@ class SettingsRepository(private val store: KeyValueStore) {
         _audioFxEnabled.value = value
     }
 
-    /** [index]：0 低音、1 中频、2 高音；[db] 限制在 ±6 dB。 */
+    /** [index]：0 低频、1 中低、2 中、3 中高、4 高频；[db] 限制在 ±6 dB。 */
     fun setAudioFxBand(index: Int, db: Int) {
-        if (index !in 0..2) return
+        if (index !in AUDIO_FX_BAND_KEYS.indices) return
         val next = _audioFxBands.value.toMutableList()
         next[index] = db.coerceIn(-6, 6)
         _audioFxBands.value = next
         store.putInt(AUDIO_FX_BAND_KEYS[index], next[index])
     }
 
+    /** 一次写入整条五段曲线（预设 / 自定义曲线）。 */
+    fun setAudioFxBands(bands: List<Int>) {
+        val next = List(AUDIO_FX_BAND_KEYS.size) { bands.getOrElse(it) { 0 }.coerceIn(-6, 6) }
+        _audioFxBands.value = next
+        next.forEachIndexed { index, db -> store.putInt(AUDIO_FX_BAND_KEYS[index], db) }
+    }
+
+    /** 把当前曲线存成「自定义」预设。 */
+    fun saveCustomAudioFx() {
+        val bands = _audioFxBands.value
+        store.putString(KEY_CUSTOM_AUDIO_FX, bands.joinToString(","))
+        _customAudioFx.value = bands
+    }
+
+    fun clearCustomAudioFx() {
+        store.putString(KEY_CUSTOM_AUDIO_FX, null)
+        _customAudioFx.value = null
+    }
+
+    fun setAudioQuality(value: AudioQuality) {
+        store.putString(KEY_STREAM_LEVEL, value.level)
+        _audioQuality.value = value
+    }
+
+    /** 取流侧现读音质：播放服务与界面各自持有容器，切换后立即生效。 */
+    fun streamLevelNow(): String =
+        AudioQuality.fromKey(store.getString(KEY_STREAM_LEVEL)).level
+
     /** 播放服务现读：服务重建后按上次的音效设置恢复。 */
     fun isAudioFxEnabledNow(): Boolean = store.getBoolean(KEY_AUDIO_FX_ENABLED, false)
 
-    fun audioFxBandsNow(): IntArray = IntArray(3) {
+    fun audioFxBandsNow(): IntArray = IntArray(AUDIO_FX_BAND_KEYS.size) {
         store.getInt(AUDIO_FX_BAND_KEYS[it], 0).coerceIn(-6, 6)
     }
 
@@ -252,8 +306,16 @@ class SettingsRepository(private val store: KeyValueStore) {
         store.putInt(KEY_DESKTOP_LYRIC_Y, y)
     }
 
-    private fun readAudioFxBands(): List<Int> = List(3) {
+    private fun readAudioFxBands(): List<Int> = List(AUDIO_FX_BAND_KEYS.size) {
         store.getInt(AUDIO_FX_BAND_KEYS[it], 0).coerceIn(-6, 6)
+    }
+
+    /** 自定义曲线按「逗号分隔的 dB」存；格式不对就当没存过。 */
+    private fun readCustomAudioFx(): List<Int>? {
+        val raw = store.getString(KEY_CUSTOM_AUDIO_FX) ?: return null
+        val bands = raw.split(",").mapNotNull { it.trim().toIntOrNull() }
+        return bands.takeIf { it.size == AUDIO_FX_BAND_KEYS.size }
+            ?.map { it.coerceIn(-6, 6) }
     }
 
     private fun readBackgroundSpec(): BackgroundSpec = BackgroundSpec(
@@ -281,7 +343,20 @@ class SettingsRepository(private val store: KeyValueStore) {
         const val KEY_SMART_TRANSITION = "smart_transition"
         const val KEY_PLAYBACK_SPEED = "playback_speed_percent"
         const val KEY_AUDIO_FX_ENABLED = "audio_fx_enabled"
-        val AUDIO_FX_BAND_KEYS = listOf("audio_fx_low", "audio_fx_mid", "audio_fx_high")
+        const val KEY_CUSTOM_AUDIO_FX = "audio_fx_custom"
+        const val KEY_STREAM_LEVEL = "stream_level"
+
+        /**
+         * 五段频率的持久化 key。顺序即 UI 顺序：低频 / 中低 / 中 / 中高 / 高频。
+         * 前三段的低频与中频沿用旧 key，老用户的设置不会丢。
+         */
+        val AUDIO_FX_BAND_KEYS = listOf(
+            "audio_fx_low",
+            "audio_fx_midlow",
+            "audio_fx_mid",
+            "audio_fx_midhigh",
+            "audio_fx_high",
+        )
         const val KEY_THEME_MODE = "theme_mode"
         const val KEY_SEED_SOURCE = "seed_source"
         const val KEY_FIXED_SEED = "fixed_seed_argb"

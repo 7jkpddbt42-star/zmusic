@@ -390,6 +390,16 @@ object MusicIcons {
         }
     }
 
+    /** 队列拖动排序：三条横线手柄。 */
+    val DragHandle: ImageVector = strokeIcon("music_drag") {
+        line {
+            moveTo(5f, 9f)
+            lineTo(19f, 9f)
+            moveTo(5f, 15f)
+            lineTo(19f, 15f)
+        }
+    }
+
     /** 空状态：音符。 */
     val MusicNote: ImageVector = strokeIcon("music_note") {
         solid {

@@ -2,7 +2,11 @@ package com.musicbox.app.ui.home
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
@@ -45,6 +49,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.musicbox.app.data.NetEaseSession
@@ -303,8 +308,11 @@ fun HomeScreen(
                             }
                         }
                     }
+                } else if (state.loading) {
+                    // 歌单是首页最后到达的数据，用骨架占位，避免先闪一行「没有歌单」
+                    PlaylistSkeletonPanel()
                 } else {
-                    LoadingPanel(if (state.loading) "正在同步你的歌单…" else "还没有创建歌单")
+                    LoadingPanel("还没有创建歌单")
                 }
             }
         }
@@ -409,6 +417,8 @@ private fun DailyHero(
 ) {
     val song = state.daily.firstOrNull()
     val hasSong = song != null
+    // 只有「首次加载且还没有数据」才显示骨架；失败时直接给错误文案，骨架会一直挂着
+    val skeleton = !hasSong && state.loading && state.error == null
     val shape = RoundedCornerShape(30.dp)
     val sweep = remember { Animatable(0f) }
     val settle = remember { Animatable(0f) }
@@ -543,53 +553,61 @@ private fun DailyHero(
                     color = Color.White.copy(alpha = 0.72f),
                 )
                 Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = song?.name ?: if (state.error != null) {
-                        "今日推荐暂时没连上"
-                    } else {
-                        "正在准备今日推荐…"
-                    },
-                    style = MaterialTheme.typography.headlineMedium.copy(
-                        fontSize = 26.sp,
-                        letterSpacing = (-0.4).sp,
-                    ),
-                    fontWeight = FontWeight.SemiBold,
-                    color = Color.White,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Spacer(modifier = Modifier.height(5.dp))
-                Text(
-                    text = song?.artists?.joinToString(" / ")
-                        ?: if (state.error != null) "稍后刷新再试" else "每天 6:00 更新",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color.White.copy(alpha = 0.74f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Spacer(modifier = Modifier.height(18.dp))
-                if (hasSong) {
-                    Row(
-                        modifier = Modifier
-                            .clip(CircleShape)
-                            .background(Color.White)
-                            .clickable(onClick = onPlayAll)
-                            .padding(horizontal = 18.dp, vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(
-                            imageVector = MusicIcons.Play,
-                            contentDescription = null,
-                            tint = Color.Black,
-                            modifier = Modifier.size(15.dp),
-                        )
-                        Spacer(modifier = Modifier.width(7.dp))
-                        Text(
-                            text = "播放全部",
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.SemiBold,
-                            color = Color.Black,
-                        )
+                if (skeleton) {
+                    // 首屏骨架：形状与真实文案一致，数据到达后原地换成文字，不发生跳版
+                    SkeletonBar(width = 214.dp, height = 28.dp, color = Color.White.copy(alpha = 0.16f))
+                    Spacer(modifier = Modifier.height(12.dp))
+                    SkeletonBar(width = 118.dp, height = 12.dp, color = Color.White.copy(alpha = 0.12f))
+                    Spacer(modifier = Modifier.height(18.dp))
+                } else {
+                    Text(
+                        text = song?.name ?: if (state.error != null) {
+                            "今日推荐暂时没连上"
+                        } else {
+                            "正在准备今日推荐…"
+                        },
+                        style = MaterialTheme.typography.headlineMedium.copy(
+                            fontSize = 26.sp,
+                            letterSpacing = (-0.4).sp,
+                        ),
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color.White,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Spacer(modifier = Modifier.height(5.dp))
+                    Text(
+                        text = song?.artists?.joinToString(" / ")
+                            ?: if (state.error != null) "稍后刷新再试" else "每天 6:00 更新",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.White.copy(alpha = 0.74f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Spacer(modifier = Modifier.height(18.dp))
+                    if (hasSong) {
+                        Row(
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .background(Color.White)
+                                .clickable(onClick = onPlayAll)
+                                .padding(horizontal = 18.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                imageVector = MusicIcons.Play,
+                                contentDescription = null,
+                                tint = Color.Black,
+                                modifier = Modifier.size(15.dp),
+                            )
+                            Spacer(modifier = Modifier.width(7.dp))
+                            Text(
+                                text = "播放全部",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color.Black,
+                            )
+                        }
                     }
                 }
             }
@@ -725,6 +743,54 @@ private fun SectionHeader(
             }
         }
         trailing?.invoke()
+    }
+}
+
+/** 首屏骨架条：只做透明度呼吸（淡入淡出），不引入位移或扫光。 */
+@Composable
+private fun SkeletonBar(
+    width: Dp,
+    height: Dp,
+    color: Color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.16f),
+    corner: Dp = 8.dp,
+) {
+    val pulse = rememberInfiniteTransition(label = "skeleton")
+    val pulseAlpha by pulse.animateFloat(
+        initialValue = 0.45f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(900), RepeatMode.Reverse),
+        label = "skeletonAlpha",
+    )
+    Box(
+        modifier = Modifier
+            .width(width)
+            .height(height)
+            .graphicsLayer { alpha = pulseAlpha }
+            .clip(RoundedCornerShape(corner))
+            .background(color),
+    )
+}
+
+/** 「我的歌单」加载骨架：三行封面 + 两行文字的占位。 */
+@Composable
+private fun PlaylistSkeletonPanel() {
+    GlassPanel(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            repeat(3) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    SkeletonBar(width = 44.dp, height = 44.dp, corner = 14.dp)
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column {
+                        SkeletonBar(width = 148.dp, height = 14.dp)
+                        Spacer(modifier = Modifier.height(7.dp))
+                        SkeletonBar(width = 84.dp, height = 10.dp)
+                    }
+                }
+            }
+        }
     }
 }
 
