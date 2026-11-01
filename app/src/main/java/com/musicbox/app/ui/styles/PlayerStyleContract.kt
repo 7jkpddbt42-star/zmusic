@@ -53,6 +53,8 @@ data class PlayerActions(
     val onSelectStyle: (PlayerStyle) -> Unit,
     val onNotify: (String) -> Unit,
     val onArtworkLoaded: (Bitmap) -> Unit,
+    /** 设置播放倍速（1.0 = 原速），由播放页的倍速菜单调用。 */
+    val onSetSpeed: (Float) -> Unit,
 )
 
 /**

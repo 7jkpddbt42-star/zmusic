@@ -237,7 +237,6 @@ fun GesturePlayerStyle(
                         ProgressSection(
                             source = source,
                             durationMs = state.durationMs,
-                            positionMs = state.positionMs,
                             onSeek = actions.onSeek,
                             foreground = Color.White,
                             trackHeight = 2.dp,
@@ -283,6 +282,8 @@ fun GesturePlayerStyle(
                             onOpenQueue = actions.onOpenQueue,
                             onOpenStyleSwitcher = actions.onOpenStyleSwitcher,
                             onNotify = actions.onNotify,
+                            speed = state.speed,
+                            onSpeedChange = actions.onSetSpeed,
                             foreground = Color.White.copy(alpha = 0.82f),
                             iconSize = 18.dp,
                             itemSize = 38.dp,

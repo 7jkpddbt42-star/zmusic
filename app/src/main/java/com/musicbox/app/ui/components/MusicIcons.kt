@@ -188,6 +188,20 @@ object MusicIcons {
         }
     }
 
+    /** 睡眠定时：钟表（表盘 + 指针 + 顶部定时钮）。 */
+    val Timer: ImageVector = strokeIcon("music_timer") {
+        line { circle(12f, 13.2f, 7.2f) }
+        line {
+            moveTo(12f, 9.2f)
+            lineTo(12f, 13.2f)
+            lineTo(15.4f, 15.4f)
+        }
+        line {
+            moveTo(9.4f, 3.4f)
+            lineTo(14.6f, 3.4f)
+        }
+    }
+
     /** 收起 / 返回到上一层：向下箭头。 */
     val ChevronDown: ImageVector = strokeIcon("music_chevron_down") {
         line {

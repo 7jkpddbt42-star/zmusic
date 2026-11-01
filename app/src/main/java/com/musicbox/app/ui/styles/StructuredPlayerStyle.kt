@@ -107,7 +107,6 @@ fun StructuredPlayerStyle(
             ProgressSection(
                 source = source,
                 durationMs = state.durationMs,
-                positionMs = state.positionMs,
                 onSeek = actions.onSeek,
                 foreground = Color.White,
                 trackHeight = 2.dp,
@@ -179,6 +178,8 @@ fun StructuredPlayerStyle(
                     onOpenQueue = actions.onOpenQueue,
                     onOpenStyleSwitcher = actions.onOpenStyleSwitcher,
                     onNotify = actions.onNotify,
+                    speed = state.speed,
+                    onSpeedChange = actions.onSetSpeed,
                     foreground = Color.White.copy(alpha = 0.86f),
                     iconSize = 19.dp,
                     itemSize = 40.dp,

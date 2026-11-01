@@ -14,6 +14,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -50,7 +51,6 @@ enum class ProgressTimePlacement {
 fun ProgressSection(
     source: PositionSource,
     durationMs: Long,
-    positionMs: Long,
     onSeek: (Long) -> Unit,
     modifier: Modifier = Modifier,
     foreground: Color = Color.White,
@@ -67,7 +67,12 @@ fun ProgressSection(
     val framePosition = rememberFramePosition(source)
     var dragFraction by remember { mutableStateOf<Float?>(null) }
 
-    val displayPosition = dragFraction?.let { (it * durationMs).toLong() } ?: positionMs
+    // 时间文本只精确到秒：从逐帧位置派生秒级值，跨过整秒才触发一次重组。
+    // 之前用 250ms 的 state.positionMs，会让整个进度区（连同所在风格布局）每秒重组 4 次。
+    val secondsPosition by remember(framePosition) {
+        derivedStateOf { (framePosition.value / 1000L) * 1000L }
+    }
+    val displayPosition = dragFraction?.let { (it * durationMs).toLong() } ?: secondsPosition
     val timeColor = foreground.copy(alpha = timeAlpha)
 
     when (timePlacement) {

@@ -165,7 +165,6 @@ fun LiquidGlassPlayerStyle(
                         ProgressSection(
                             source = source,
                             durationMs = state.durationMs,
-                            positionMs = state.positionMs,
                             onSeek = actions.onSeek,
                             foreground = Color.White,
                             trackHeight = 3.dp,
@@ -231,6 +230,8 @@ fun LiquidGlassPlayerStyle(
                             onOpenQueue = actions.onOpenQueue,
                             onOpenStyleSwitcher = actions.onOpenStyleSwitcher,
                             onNotify = actions.onNotify,
+                            speed = state.speed,
+                            onSpeedChange = actions.onSetSpeed,
                             foreground = Color.White.copy(alpha = 0.84f),
                             iconSize = 18.dp,
                             itemSize = 38.dp,

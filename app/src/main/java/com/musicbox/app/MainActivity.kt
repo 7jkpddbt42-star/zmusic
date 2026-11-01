@@ -74,6 +74,7 @@ import com.musicbox.app.data.BackgroundSpec
 import com.musicbox.app.data.BackgroundType
 import com.musicbox.app.data.PlayerStyle
 import com.musicbox.app.desktoplyric.DesktopLyricService
+import com.musicbox.app.player.SongDiskCache
 import com.musicbox.app.player.sharedSongStreamCache
 import com.musicbox.app.ui.BottomTabs
 import com.musicbox.app.ui.LocalPageSeed
@@ -109,12 +110,14 @@ import com.musicbox.app.ui.search.SearchViewModel
 import com.musicbox.app.ui.settings.SettingsScreen
 import com.musicbox.app.ui.theme.SeedSource
 import com.musicbox.app.ui.theme.ThemeSpec
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /** 按来源解析当前生效的主题 seed。壁纸取色在低版本/取色失败时返回 null。 */
 private fun resolveSeed(
@@ -248,6 +251,7 @@ private fun MusicBoxApp(
     }.collectAsStateWithLifecycle(initialValue = PlaybackUiState())
     val mode by playerVm.mode.collectAsStateWithLifecycle()
     val message by playerVm.message.collectAsStateWithLifecycle()
+    val sleepTimerLabel by playerVm.sleepTimerLabel.collectAsStateWithLifecycle()
     val lyricState by lyricVm.state.collectAsStateWithLifecycle()
     val currentLineText by lyricVm.currentLineText.collectAsStateWithLifecycle()
     // 播放页歌词预览：原文与译文分两排，迷你条继续用拼接后的 currentLineText
@@ -671,6 +675,11 @@ private fun MusicBoxApp(
         },
         onNotify = { text -> scope.launch { snackbarHostState.showSnackbar(text) } },
         onArtworkLoaded = { container.artworkTheme.update(it) },
+        // 倍速：立即生效并写回偏好，播放服务重建后按同一值恢复
+        onSetSpeed = { speed ->
+            playerVm.setSpeed(speed)
+            container.settings.setPlaybackSpeedPercent((speed * 100).toInt())
+        },
     )
 
     val playerLayer: @Composable () -> Unit = {
@@ -682,9 +691,13 @@ private fun MusicBoxApp(
                 enter = fadeIn(tween(320)),
                 exit = fadeOut(tween(260)),
             ) {
-                // 完整播放状态（含 250ms 位置）只在播放页可见时订阅：
-                // 关闭时自动取消，主界面不会被位置刷新牵连重组。
-                val playerState by playerVm.state.collectAsStateWithLifecycle()
+                // 播放页只订阅结构态：位置由进度条逐帧读取。
+                // 若这里直接收完整状态，250ms 的位置刷新会让 9 种风格整页重组，玻璃表面也要跟着重算。
+                val playerState by remember(playerVm) {
+                    playerVm.state
+                        .map { it.copy(positionMs = 0L) }
+                        .distinctUntilChanged()
+                }.collectAsStateWithLifecycle(initialValue = PlaybackUiState())
                 // 不透明底色：播放页 ↔ 歌词页交叉淡化时不会透出下面的主界面
                 Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
                     // 播放页 ⇄ 歌词页：整层交叉淡化，播放页 UI 慢慢退场、歌词页慢慢浮现。
@@ -771,6 +784,8 @@ private fun MusicBoxApp(
             onSelect = { index -> playerVm.selectQueueItem(index) },
             onRemove = playerVm::removeQueueItem,
             onCycleMode = playerVm::cyclePlayMode,
+            sleepTimerLabel = sleepTimerLabel,
+            onSleepTimer = playerVm::setSleepTimer,
         )
     }
 
@@ -804,6 +819,8 @@ private fun MusicBoxApp(
             freeSourceEnabled = freeSourceEnabled,
             smartTransition = smartTransition,
             lyricCacheCount = container.lyricDiskCache.size(),
+            // 进设置页时算一次即可；清空后设置页会关闭，重开时会重新计算
+            songCacheBytes = remember { SongDiskCache.sizeBytes(context) },
             themeSpec = spec,
             background = backgroundSpec,
             backgroundBlur = backgroundBlurPref,
@@ -831,6 +848,13 @@ private fun MusicBoxApp(
             onClearLyricCache = {
                 container.lyricDiskCache.clear()
                 showSettings = false
+            },
+            onClearSongCache = {
+                // 删除最多 256MB 的缓存文件，放到 IO 线程避免设置页卡一下
+                scope.launch {
+                    withContext(Dispatchers.IO) { SongDiskCache.clear(context) }
+                    showSettings = false
+                }
             },
             onThemeMode = container.settings::setThemeMode,
             onSeedSource = container.settings::setSeedSource,

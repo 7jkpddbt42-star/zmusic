@@ -56,6 +56,11 @@ class SettingsRepository(private val store: KeyValueStore) {
     private val _smartTransition = MutableStateFlow(isSmartTransitionEnabledNow())
     val smartTransition: StateFlow<Boolean> = _smartTransition.asStateFlow()
 
+    /** 播放倍速，按百分比存（100 = 1.0x）。跨会话沿用。 */
+    private val _playbackSpeedPercent =
+        MutableStateFlow(store.getInt(KEY_PLAYBACK_SPEED, DEFAULT_SPEED_PERCENT))
+    val playbackSpeedPercent: StateFlow<Int> = _playbackSpeedPercent.asStateFlow()
+
     /** 主题偏好整包暴露：由若干设置 key 组成，UI 只订阅这一个 flow，接线更简单。 */
     private val _themeSpec = MutableStateFlow(readThemeSpec())
     val themeSpec: StateFlow<ThemeSpec> = _themeSpec.asStateFlow()
@@ -130,6 +135,15 @@ class SettingsRepository(private val store: KeyValueStore) {
 
     /** 播放服务侧现读「智能过渡」开关，与界面各自持有容器时也能立刻生效。 */
     fun isSmartTransitionEnabledNow(): Boolean = store.getBoolean(KEY_SMART_TRANSITION, true)
+
+    /** 播放服务侧现读倍速，重启服务后仍沿用上次选择。 */
+    fun playbackSpeedNow(): Float = store.getInt(KEY_PLAYBACK_SPEED, DEFAULT_SPEED_PERCENT) / 100f
+
+    fun setPlaybackSpeedPercent(percent: Int) {
+        val clamped = percent.coerceIn(MIN_SPEED_PERCENT, MAX_SPEED_PERCENT)
+        store.putInt(KEY_PLAYBACK_SPEED, clamped)
+        _playbackSpeedPercent.value = clamped
+    }
 
     fun setThemeMode(mode: ThemeMode) {
         store.putString(KEY_THEME_MODE, mode.key)
@@ -233,6 +247,7 @@ class SettingsRepository(private val store: KeyValueStore) {
         const val KEY_FREE_SOURCE = "free_source_enabled"
         const val KEY_PLAY_MODE = "play_mode"
         const val KEY_SMART_TRANSITION = "smart_transition"
+        const val KEY_PLAYBACK_SPEED = "playback_speed_percent"
         const val KEY_THEME_MODE = "theme_mode"
         const val KEY_SEED_SOURCE = "seed_source"
         const val KEY_FIXED_SEED = "fixed_seed_argb"
@@ -252,5 +267,10 @@ class SettingsRepository(private val store: KeyValueStore) {
         const val DEFAULT_DESKTOP_LYRIC_FONT_SP = 20
         const val POSITION_UNSET = Int.MIN_VALUE
         val DEFAULT_DESKTOP_LYRIC_COLOR = 0xFFFFFFFF.toInt()
+
+        /** 倍速范围 0.5x–2.0x；默认 1.0x。 */
+        const val DEFAULT_SPEED_PERCENT = 100
+        const val MIN_SPEED_PERCENT = 50
+        const val MAX_SPEED_PERCENT = 200
     }
 }

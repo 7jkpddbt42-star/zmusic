@@ -155,7 +155,6 @@ fun SplitViewPlayerStyle(
                     ProgressSection(
                         source = source,
                         durationMs = state.durationMs,
-                        positionMs = state.positionMs,
                         onSeek = actions.onSeek,
                         foreground = Color.White,
                         trackHeight = 2.5.dp,
@@ -190,6 +189,8 @@ fun SplitViewPlayerStyle(
                             onOpenQueue = actions.onOpenQueue,
                             onOpenStyleSwitcher = actions.onOpenStyleSwitcher,
                             onNotify = actions.onNotify,
+                            speed = state.speed,
+                            onSpeedChange = actions.onSetSpeed,
                             foreground = Color.White.copy(alpha = 0.80f),
                             iconSize = 17.dp,
                             itemSize = 36.dp,

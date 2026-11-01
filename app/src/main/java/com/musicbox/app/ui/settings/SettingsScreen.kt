@@ -46,6 +46,7 @@ import com.musicbox.app.data.BackgroundBlur
 import com.musicbox.app.data.BackgroundSpec
 import com.musicbox.app.data.LyricStyle
 import com.musicbox.app.data.PlayerStyle
+import com.musicbox.app.player.SongDiskCache
 import com.musicbox.app.ui.components.liquidglass.GlassAmbientBackdrop
 import com.musicbox.app.ui.components.liquidglass.glassBackdropSource
 import com.musicbox.app.ui.components.liquidglass.liquidGlass
@@ -53,6 +54,7 @@ import com.musicbox.app.ui.components.liquidglass.rememberGlassBackdrop
 import com.musicbox.app.ui.theme.SeedSource
 import com.musicbox.app.ui.theme.ThemeMode
 import com.musicbox.app.ui.theme.ThemeSpec
+import java.util.Locale
 
 /** 固定色色板预设（8 个）：覆盖紫/蓝/青/绿/橙/红/粉/灰。 */
 private val PRESET_COLORS: List<Int> = listOf(
@@ -86,6 +88,7 @@ fun SettingsScreen(
     freeSourceEnabled: Boolean,
     smartTransition: Boolean,
     lyricCacheCount: Int,
+    songCacheBytes: Long,
     themeSpec: ThemeSpec,
     background: BackgroundSpec,
     backgroundBlur: BackgroundBlur,
@@ -101,6 +104,7 @@ fun SettingsScreen(
     onFreeSourceEnabled: (Boolean) -> Unit,
     onSmartTransition: (Boolean) -> Unit,
     onClearLyricCache: () -> Unit,
+    onClearSongCache: () -> Unit,
     onThemeMode: (ThemeMode) -> Unit,
     onSeedSource: (SeedSource) -> Unit,
     onFixedSeedArgb: (Int) -> Unit,
@@ -536,8 +540,27 @@ fun SettingsScreen(
             )
 
             SettingsGroup {
-                Text("歌词缓存：$lyricCacheCount 首")
-                Button(onClick = onClearLyricCache, modifier = Modifier.padding(top = 8.dp)) { Text("清空歌词缓存") }
+                Text("缓存", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "听过的歌会自动存到本机（最多 256MB，超出后淘汰最久未听的），" +
+                        "下次再听不用重新拉流；断网时已缓存的歌仍可播放。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+
+                Text("歌词缓存：$lyricCacheCount 首", modifier = Modifier.padding(top = 12.dp))
+                Button(onClick = onClearLyricCache, modifier = Modifier.padding(top = 8.dp)) {
+                    Text("清空歌词缓存")
+                }
+
+                Text(
+                    "离线音频：${formatBytes(songCacheBytes)} / ${formatBytes(SongDiskCache.MAX_BYTES)}",
+                    modifier = Modifier.padding(top = 12.dp),
+                )
+                Button(onClick = onClearSongCache, modifier = Modifier.padding(top = 8.dp)) {
+                    Text("清空离线音频")
+                }
             }
 
             HorizontalDivider(
@@ -576,6 +599,13 @@ fun SettingsScreen(
             },
         )
     }
+}
+
+/** 字节数 → 人类可读体积，用于缓存占用展示。 */
+private fun formatBytes(bytes: Long): String = when {
+    bytes >= 1024L * 1024 * 1024 -> String.format(Locale.US, "%.1f GB", bytes / (1024.0 * 1024 * 1024))
+    bytes >= 1024L * 1024 -> String.format(Locale.US, "%.1f MB", bytes / (1024.0 * 1024))
+    else -> String.format(Locale.US, "%d KB", bytes / 1024)
 }
 
 /**

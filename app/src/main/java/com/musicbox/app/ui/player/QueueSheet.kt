@@ -26,6 +26,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -50,6 +52,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.musicbox.app.data.BackgroundSpec
 import com.musicbox.app.model.PlayMode
+import com.musicbox.app.player.SLEEP_AFTER_CURRENT
 import com.musicbox.app.ui.components.GlassPanel
 import com.musicbox.app.ui.components.GlassPill
 import com.musicbox.app.ui.components.MusicIcons
@@ -65,6 +68,16 @@ private const val QUEUE_SLIDE_IN_MS = 340
 
 /** 抽屉收起：下滑离场，比进场略快。 */
 private const val QUEUE_SLIDE_OUT_MS = 260
+
+/** 睡眠定时档位：文案 → 分钟数（0 关闭，-1 播完当前这首）。 */
+private val SLEEP_OPTIONS = listOf(
+    "关闭" to 0,
+    "15 分钟" to 15,
+    "30 分钟" to 30,
+    "60 分钟" to 60,
+    "90 分钟" to 90,
+    "播完当前" to SLEEP_AFTER_CURRENT,
+)
 
 /** 抽屉占屏高度比例，接近主流播放器的队列抽屉。 */
 private const val QUEUE_SHEET_HEIGHT_FRACTION = 0.72f
@@ -92,6 +105,8 @@ internal fun QueueSheet(
     onSelect: (Int) -> Unit,
     onRemove: (Int) -> Unit,
     onCycleMode: () -> Unit,
+    sleepTimerLabel: String?,
+    onSleepTimer: (Int) -> Unit,
 ) {
     // Dialog 是独立窗口，无法采样播放页的背景图层，这里在窗口内自建一份背景源
     val backdrop = rememberGlassBackdrop()
@@ -230,6 +245,65 @@ internal fun QueueSheet(
                                                 style = MaterialTheme.typography.labelMedium,
                                                 color = MaterialTheme.colorScheme.onSurface,
                                             )
+                                        }
+                                    }
+                                }
+
+                                // 睡眠定时入口放在队列抽屉里：9 种播放风格共用这一处，
+                                // 不必为每种风格的按钮排布再各加一个图标。
+                                var sleepMenuOpen by remember { mutableStateOf(false) }
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(start = 20.dp, end = 16.dp, bottom = 4.dp),
+                                    horizontalArrangement = Arrangement.End,
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Box {
+                                        GlassPill(onClick = { sleepMenuOpen = true }) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.Center,
+                                            ) {
+                                                Icon(
+                                                    imageVector = MusicIcons.Timer,
+                                                    contentDescription = null,
+                                                    tint = MaterialTheme.colorScheme.onSurface,
+                                                    modifier = Modifier.size(14.dp),
+                                                )
+                                                Spacer(modifier = Modifier.width(5.dp))
+                                                Text(
+                                                    text = sleepTimerLabel?.let { "定时：$it" }
+                                                        ?: "睡眠定时",
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    color = MaterialTheme.colorScheme.onSurface,
+                                                )
+                                            }
+                                        }
+                                        DropdownMenu(
+                                            expanded = sleepMenuOpen,
+                                            onDismissRequest = { sleepMenuOpen = false },
+                                        ) {
+                                            SLEEP_OPTIONS.forEach { (label, minutes) ->
+                                                DropdownMenuItem(
+                                                    text = {
+                                                        Text(
+                                                            text = label,
+                                                            color = if (
+                                                                minutes == 0 && sleepTimerLabel == null
+                                                            ) {
+                                                                MaterialTheme.colorScheme.primary
+                                                            } else {
+                                                                MaterialTheme.colorScheme.onSurface
+                                                            },
+                                                        )
+                                                    },
+                                                    onClick = {
+                                                        sleepMenuOpen = false
+                                                        onSleepTimer(minutes)
+                                                    },
+                                                )
+                                            }
                                         }
                                     }
                                 }

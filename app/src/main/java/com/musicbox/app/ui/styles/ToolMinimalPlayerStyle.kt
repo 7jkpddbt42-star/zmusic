@@ -166,7 +166,6 @@ fun ToolMinimalPlayerStyle(
             ProgressSection(
                 source = source,
                 durationMs = state.durationMs,
-                positionMs = state.positionMs,
                 onSeek = actions.onSeek,
                 foreground = ToolAccent,
                 trackColor = ToolFg.copy(alpha = 0.16f),
@@ -218,6 +217,8 @@ fun ToolMinimalPlayerStyle(
                 onOpenQueue = actions.onOpenQueue,
                 onOpenStyleSwitcher = actions.onOpenStyleSwitcher,
                 onNotify = actions.onNotify,
+                speed = state.speed,
+                onSpeedChange = actions.onSetSpeed,
                 foreground = ToolMuted,
                 iconSize = 17.dp,
                 itemSize = 44.dp,

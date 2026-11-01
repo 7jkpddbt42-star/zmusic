@@ -12,6 +12,8 @@ import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.ListenableFuture
 import com.musicbox.app.model.PlayMode
+import com.musicbox.app.player.ACTION_SLEEP_TIMER
+import com.musicbox.app.player.ARG_SLEEP_MINUTES
 import com.musicbox.app.player.PlaybackService
 import com.musicbox.app.player.PositionSource
 import com.musicbox.app.player.applyTo
@@ -53,6 +55,8 @@ data class PlaybackUiState(
     val artworkUrl: String? = null,
     val isPlaying: Boolean = false,
     val isTrial: Boolean = false,
+    /** 播放倍速（1.0 = 原速）。由播放器回传，避免 UI 与服务两侧各存一份。 */
+    val speed: Float = 1f,
     val positionMs: Long = 0L,
     val durationMs: Long = 0L,
     val queue: List<QueueItem> = emptyList(),
@@ -171,6 +175,20 @@ class PlaybackConnection(
         return controller.first { it != null }
     }
 
+    /**
+     * 睡眠定时：0 取消、分钟数 > 0 到点暂停、[SLEEP_AFTER_CURRENT] 播完当前暂停。
+     * 计时放在播放服务里，界面退出后仍然有效；会话尚未就绪时静默忽略。
+     */
+    fun setSleepTimer(minutes: Int) {
+        val controller = _controller.value ?: return
+        val command = SessionCommand(ACTION_SLEEP_TIMER, Bundle.EMPTY)
+        if (!controller.availableSessionCommands.contains(command)) return
+        controller.sendCustomCommand(
+            command,
+            Bundle().apply { putInt(ARG_SLEEP_MINUTES, minutes) },
+        )
+    }
+
     fun clearError() = _state.update { it.copy(errorMessage = null) }
 
     /**
@@ -217,6 +235,7 @@ class PlaybackConnection(
                 album = metadata?.albumTitle?.toString(),
                 artworkUrl = metadata?.artworkUri?.toString(),
                 isPlaying = controller.isPlaying,
+                speed = controller.playbackParameters.speed,
                 isTrial = songId?.let { sharedSongStreamCache.get(it)?.isTrial } == true,
                 positionMs = controller.currentPosition.coerceAtLeast(0),
                 durationMs = if (duration > 0) duration else 0L,

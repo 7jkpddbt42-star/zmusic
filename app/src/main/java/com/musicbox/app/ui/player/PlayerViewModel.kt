@@ -9,11 +9,13 @@ import androidx.media3.common.MediaMetadata
 import com.musicbox.app.data.ListeningStatsStore
 import com.musicbox.app.model.PlayMode
 import com.musicbox.app.model.Song
+import com.musicbox.app.player.SLEEP_AFTER_CURRENT
 import com.musicbox.app.player.SongUri
 import com.musicbox.app.player.applyTo
 import com.musicbox.app.player.sharedSongStreamCache
 import com.musicbox.app.source.MusicProvider
 import com.musicbox.app.ui.toUserMessage
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -47,6 +49,11 @@ class PlayerViewModel(
     /** 一次性提示（播放失败、模式切换等），由 UI 消费后清空。 */
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message.asStateFlow()
+
+    /** 睡眠定时的展示文案（如「29:12」「播完当前」），null 表示未开启。 */
+    private val _sleepTimerLabel = MutableStateFlow<String?>(null)
+    val sleepTimerLabel: StateFlow<String?> = _sleepTimerLabel.asStateFlow()
+    private var sleepTimerJob: Job? = null
 
     fun consumeMessage() {
         _message.value = null
@@ -129,6 +136,39 @@ class PlayerViewModel(
     fun seekTo(positionMs: Long) {
         connection.controller.value?.seekTo(positionMs)
     }
+
+    /**
+     * 睡眠定时：0 取消、分钟数 > 0 到点暂停、[SLEEP_AFTER_CURRENT] 播完当前暂停。
+     * 真正的计时在播放服务里；这里只维护一个用于展示的倒计时，界面退出不影响暂停。
+     */
+    fun setSleepTimer(minutes: Int) {
+        connection.setSleepTimer(minutes)
+        sleepTimerJob?.cancel()
+        sleepTimerJob = null
+        when {
+            minutes == SLEEP_AFTER_CURRENT -> _sleepTimerLabel.value = "播完当前"
+            minutes <= 0 -> _sleepTimerLabel.value = null
+            else -> {
+                _sleepTimerLabel.value = formatRemaining(minutes * 60)
+                sleepTimerJob = viewModelScope.launch {
+                    var remaining = minutes * 60
+                    while (remaining > 0) {
+                        delay(1_000)
+                        remaining--
+                        _sleepTimerLabel.value = if (remaining > 0) formatRemaining(remaining) else null
+                    }
+                }
+            }
+        }
+    }
+
+    /** 倍速：立即作用到播放器；持久化由上层一起写，保证重启后沿用。 */
+    fun setSpeed(speed: Float) {
+        connection.controller.value?.setPlaybackSpeed(speed)
+    }
+
+    private fun formatRemaining(totalSeconds: Int): String =
+        "%d:%02d".format(totalSeconds / 60, totalSeconds % 60)
 
     /** 队列面板里点某一首 → 直接跳过去播。 */
     fun selectQueueItem(index: Int) {
