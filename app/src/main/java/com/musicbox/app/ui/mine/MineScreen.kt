@@ -1,13 +1,8 @@
 package com.musicbox.app.ui.mine
 
-import androidx.compose.animation.core.LinearOutSlowInEasing
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -17,42 +12,38 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.musicbox.app.data.NetEaseSession
 import com.musicbox.app.model.PlaylistSummary
 import com.musicbox.app.model.Song
 import com.musicbox.app.ui.components.Entrance
-import com.musicbox.app.ui.components.GlassEmptyState
 import com.musicbox.app.ui.components.GlassPanel
-import com.musicbox.app.ui.components.GlassPill
 import com.musicbox.app.ui.components.MusicIcons
 import com.musicbox.app.ui.components.PlaylistRow
 import com.musicbox.app.ui.home.PlaylistTarget
+import com.musicbox.app.ui.theme.ArtworkImage
 
 /**
- * 「我的」页：账号与个人音乐的唯一入口。
+ * 「我的」页：按网易云手机端「我的」页的排布重做。
  *
- * 结构：页头 → 账号卡（游客态即登录入口）→ 数据概览（我喜欢的 / 歌单 / 最近播放）→
- * 我的歌单 → 设置。首页不再放登录卡，登录入口全部收敛到这里。
+ * 顶部是账号行（头像 / 昵称 / 设置），下面一行四个快捷入口（我喜欢的 / 最近播放 / 已下载 / 我的歌单），
+ * 再往下是平铺的歌单列表。原来那几张卡（统计卡、下载卡、设置卡）都收进了这几个入口。
  */
 @Composable
 fun MineScreen(
@@ -62,7 +53,7 @@ fun MineScreen(
     playlists: List<PlaylistSummary>,
     /** 本机累计收听秒数，来自 [com.musicbox.app.data.ListeningStatsStore]。 */
     listeningSeconds: Long,
-    /** 本机已下载歌曲数，用于「已下载」入口的说明文案。 */
+    /** 本机已下载歌曲数，显示在「已下载」入口下。 */
     downloadedCount: Int,
     onLogin: () -> Unit,
     onLogout: () -> Unit,
@@ -72,8 +63,10 @@ fun MineScreen(
     onOpenTarget: (PlaylistTarget) -> Unit,
     onOpenPlaylists: () -> Unit,
     modifier: Modifier = Modifier,
+    // 页面状态由主壳层持有：切走再切回来时滚动位置保留、入场动画不重播
+    scrollState: ScrollState = rememberScrollState(),
+    animateEntrance: Boolean = true,
 ) {
-    val primary = MaterialTheme.colorScheme.primary
     val openLiked = {
         if (!session.isLoggedIn) {
             onLogin()
@@ -93,469 +86,306 @@ fun MineScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp),
+            .verticalScroll(scrollState),
     ) {
-        Entrance(index = 0) {
-            MineHeader(session)
+        Entrance(index = 0, animate = animateEntrance) {
+            AccountHeader(
+                session = session,
+                listeningSeconds = listeningSeconds,
+                onLogin = onLogin,
+                onLogout = onLogout,
+                onOpenSettings = onOpenSettings,
+            )
         }
 
-        Entrance(index = 1) {
-            if (session.isLoggedIn) {
-                AccountCard(
-                    session = session,
-                    listeningSeconds = listeningSeconds,
-                    onLogout = onLogout,
+        Entrance(index = 1, animate = animateEntrance) {
+            QuickActions(
+                likedCount = liked?.trackCount,
+                historyCount = history.size,
+                downloadedCount = downloadedCount,
+                playlistCount = if (session.isLoggedIn) playlists.size else null,
+                onOpenLiked = openLiked,
+                onOpenHistory = onOpenHistory,
+                onOpenDownloads = onOpenDownloads,
+                onOpenPlaylists = if (session.isLoggedIn) onOpenPlaylists else onLogin,
+            )
+        }
+
+        Entrance(index = 2, animate = animateEntrance) {
+            SectionTitle(
+                title = "我的歌单",
+                action = if (session.isLoggedIn && playlists.size > PLAYLIST_PREVIEW) {
+                    "全部 ${playlists.size}"
+                } else {
+                    null
+                },
+                onAction = onOpenPlaylists,
+            )
+        }
+
+        Entrance(index = 3, animate = animateEntrance) {
+            when {
+                !session.isLoggedIn -> LoginCard(onLogin = onLogin)
+
+                playlists.isEmpty() -> Text(
+                    text = "还没有创建歌单，在网易云音乐创建后会同步到这里",
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
                 )
-            } else {
-                LoginEntryCard(onLogin = onLogin)
-            }
-        }
 
-        Spacer(modifier = Modifier.height(12.dp))
-
-        Entrance(index = 2) {
-            // 三格统计共用一块玻璃：减少两次背景采样，视觉上也更像一张数据卡
-            GlassPanel(modifier = Modifier.fillMaxWidth(), shadowElevation = 8.dp) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                else -> Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 2.dp),
                 ) {
-                    StatCard(
-                        value = liked?.trackCount?.toString()
-                            ?: if (session.isLoggedIn) "—" else "未登录",
-                        label = "我喜欢的",
-                        onClick = openLiked,
-                        modifier = Modifier.weight(1f),
-                    )
-                    TileDivider()
-                    StatCard(
-                        value = if (session.isLoggedIn) playlists.size.toString() else "—",
-                        label = "歌单",
-                        onClick = if (session.isLoggedIn) onOpenPlaylists else onLogin,
-                        modifier = Modifier.weight(1f),
-                    )
-                    TileDivider()
-                    StatCard(
-                        value = history.size.toString(),
-                        label = "最近播放",
-                        onClick = onOpenHistory,
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-            }
-        }
-
-        if (session.isLoggedIn) {
-            Entrance(index = 3) {
-                SectionHeader(
-                    title = "我的歌单",
-                    subtitle = when {
-                        playlists.isEmpty() -> "还没有创建歌单"
-                        else -> "${playlists.size} 个歌单 · 网易云同步"
-                    },
-                    trailing = if (playlists.size > PLAYLIST_PREVIEW) {
-                        {
-                            GlassPill(onClick = onOpenPlaylists) {
-                                Text(
-                                    text = "全部 ${playlists.size}",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    // 只渲染预览条目，完整列表走「全部歌单」的 LazyColumn
+                    playlists.take(PLAYLIST_PREVIEW).forEach { playlist ->
+                        PlaylistRow(
+                            summary = playlist,
+                            onClick = {
+                                onOpenTarget(
+                                    PlaylistTarget(
+                                        title = playlist.name,
+                                        coverUrl = playlist.coverUrl,
+                                        subtitle = "${playlist.trackCount} 首 · 我的歌单",
+                                        playlistId = playlist.id,
+                                    ),
                                 )
-                            }
-                        }
-                    } else {
-                        null
-                    },
-                )
-            }
-
-            Entrance(index = 4) {
-                if (playlists.isEmpty()) {
-                    GlassEmptyState(
-                        icon = MusicIcons.MusicNote,
-                        title = "还没有创建歌单",
-                        description = "在网易云音乐创建的歌单会同步到这里。",
-                    )
-                } else {
-                    GlassPanel(modifier = Modifier.fillMaxWidth()) {
-                        Column(modifier = Modifier.fillMaxWidth().padding(8.dp)) {
-                            // 只渲染预览条目，完整列表走「全部歌单」的 LazyColumn
-                            playlists.take(PLAYLIST_PREVIEW).forEach { playlist ->
-                                PlaylistRow(
-                                    summary = playlist,
-                                    onClick = {
-                                        onOpenTarget(
-                                            PlaylistTarget(
-                                                title = playlist.name,
-                                                coverUrl = playlist.coverUrl,
-                                                subtitle = "${playlist.trackCount} 首 · 我的歌单",
-                                                playlistId = playlist.id,
-                                            ),
-                                        )
-                                    },
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        Entrance(index = if (session.isLoggedIn) 5 else 3) {
-            Column {
-                DownloadsCard(count = downloadedCount, onClick = onOpenDownloads)
-                Spacer(modifier = Modifier.height(10.dp))
-                SettingsCard(onOpenSettings = onOpenSettings)
-            }
-        }
-
-        Spacer(modifier = Modifier.height(22.dp))
-
-        Text(
-            text = "z-music · 让每一次播放都算数",
-            style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.2.sp),
-            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f),
-            modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-        )
-    }
-}
-
-private const val PLAYLIST_PREVIEW = 5
-
-/** 页头：小字标签 + 大标题 + 一行状态说明。 */
-@Composable
-private fun MineHeader(session: NetEaseSession) {
-    val primary = MaterialTheme.colorScheme.primary
-    Column(modifier = Modifier.fillMaxWidth().padding(top = 20.dp, bottom = 14.dp)) {
-        Text(
-            text = "我的音乐",
-            style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 4.sp),
-            color = primary.copy(alpha = 0.78f),
-        )
-        Text(
-            text = "我的",
-            style = MaterialTheme.typography.headlineLarge.copy(
-                fontSize = 32.sp,
-                letterSpacing = (-0.6).sp,
-            ),
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.padding(top = 6.dp),
-        )
-        Text(
-            text = if (session.isLoggedIn) "账号、收藏与本地记录" else "游客也可以完整收听、搜索与收藏到本机",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = 6.dp),
-        )
-    }
-}
-
-/** 已登录账号卡：大头像 + 昵称 + 累计收听，右侧退出。 */
-@Composable
-private fun AccountCard(
-    session: NetEaseSession,
-    listeningSeconds: Long,
-    onLogout: () -> Unit,
-) {
-    val primary = MaterialTheme.colorScheme.primary
-    GlassPanel(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(18.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(72.dp)
-                    .border(1.2.dp, Color.White.copy(alpha = 0.35f), CircleShape),
-                contentAlignment = Alignment.Center,
-            ) {
-                if (!session.avatarUrl.isNullOrBlank()) {
-                    com.musicbox.app.ui.theme.ArtworkImage(
-                        url = session.avatarUrl,
-                        modifier = Modifier.size(66.dp),
-                        shape = CircleShape,
-                        maxEdgePx = AVATAR_EDGE_PX,
-                    )
-                } else {
-                    Box(
-                        modifier = Modifier
-                            .size(66.dp)
-                            .background(primary.copy(alpha = 0.16f), CircleShape),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(
-                            imageVector = MusicIcons.Person,
-                            contentDescription = null,
-                            tint = primary,
-                            modifier = Modifier.size(30.dp),
+                            },
                         )
                     }
                 }
             }
-            Column(modifier = Modifier.weight(1f).padding(horizontal = 16.dp)) {
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+    }
+}
+
+private const val PLAYLIST_PREVIEW = 8
+
+/**
+ * 未登录时的歌单区：不再只留一行「登录后同步」，而是给一块完整的玻璃卡片和明确入口。
+ * 空页面本来就缺少内容，这张卡同时补上视觉重量和唯一的下一步动作。
+ */
+@Composable
+private fun LoginCard(onLogin: () -> Unit) {
+    GlassPanel(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp),
+        shape = RoundedCornerShape(22.dp),
+        tint = MaterialTheme.colorScheme.surface.copy(alpha = 0.62f),
+    ) {
+        Column(modifier = Modifier.fillMaxWidth().padding(18.dp)) {
+            Text(
+                text = "登录网易云音乐",
+                fontSize = 16.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = "用网易云音乐 App 扫码授权",
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+            Box(
+                modifier = Modifier
+                    .padding(top = 14.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(MaterialTheme.colorScheme.primary)
+                    .clickable(onClick = onLogin)
+                    .padding(horizontal = 18.dp, vertical = 9.dp),
+                contentAlignment = Alignment.Center,
+            ) {
                 Text(
-                    text = session.nickname ?: "已登录网易云",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                )
-                Text(
-                    text = accountSubtitle(session, listeningSeconds),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 4.dp),
-                )
-            }
-            GlassPill(onClick = onLogout) {
-                Text(
-                    text = "退出",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    text = "立即登录",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onPrimary,
                 )
             }
         }
     }
 }
 
-/**
- * 游客态登录卡：整个「我的」页唯一的登录入口。
- * 按压时轻微回缩，点击进入扫码登录。
- */
+/** 顶部账号行：圆形头像 + 昵称 + 一行状态；右侧设置（已登录时另有「退出」）。 */
 @Composable
-private fun LoginEntryCard(onLogin: () -> Unit) {
+private fun AccountHeader(
+    session: NetEaseSession,
+    listeningSeconds: Long,
+    onLogin: () -> Unit,
+    onLogout: () -> Unit,
+    onOpenSettings: () -> Unit,
+) {
     val primary = MaterialTheme.colorScheme.primary
-    val interaction = remember { MutableInteractionSource() }
-    val pressed by interaction.collectIsPressedAsState()
-    val scale by animateFloatAsState(
-        targetValue = if (pressed) 0.985f else 1f,
-        animationSpec = tween(durationMillis = 140, easing = LinearOutSlowInEasing),
-        label = "loginEntryScale",
-    )
-
-    GlassPanel(
-        modifier = Modifier.fillMaxWidth().graphicsLayer { scaleX = scale; scaleY = scale },
-        tint = primary.copy(alpha = 0.10f),
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 16.dp, end = 4.dp, top = 18.dp, bottom = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(
+        Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(26.dp))
-                .clickable(
-                    interactionSource = interaction,
-                    indication = null,
-                    onClick = onLogin,
-                )
-                .padding(horizontal = 18.dp, vertical = 18.dp),
-            verticalAlignment = Alignment.CenterVertically,
+                .size(58.dp)
+                .clip(CircleShape)
+                .background(primary.copy(alpha = 0.14f))
+                .clickable(onClick = if (session.isLoggedIn) ({}) else onLogin),
+            contentAlignment = Alignment.Center,
         ) {
-            Box(
-                modifier = Modifier
-                    .size(66.dp)
-                    .background(primary.copy(alpha = 0.18f), CircleShape),
-                contentAlignment = Alignment.Center,
-            ) {
+            if (!session.avatarUrl.isNullOrBlank()) {
+                ArtworkImage(
+                    url = session.avatarUrl,
+                    modifier = Modifier.size(58.dp),
+                    shape = CircleShape,
+                    maxEdgePx = AVATAR_EDGE_PX,
+                )
+            } else {
                 Icon(
                     imageVector = MusicIcons.Person,
                     contentDescription = null,
                     tint = primary,
-                    modifier = Modifier.size(30.dp),
+                    modifier = Modifier.size(28.dp),
                 )
             }
-            Column(modifier = Modifier.weight(1f).padding(horizontal = 16.dp)) {
-                Text(
-                    text = "登录网易云音乐",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Text(
-                    text = "同步每日推荐、我喜欢的音乐与个人歌单",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 4.dp),
-                )
-            }
+        }
+
+        Column(modifier = Modifier.weight(1f).padding(horizontal = 12.dp)) {
+            Text(
+                text = if (session.isLoggedIn) session.nickname ?: "已登录网易云" else "点击登录",
+                fontSize = 20.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.clickable(onClick = onLogin),
+            )
+            Text(
+                text = accountSubtitle(session, listeningSeconds),
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 3.dp),
+            )
+        }
+
+        if (session.isLoggedIn) {
+            Text(
+                text = "退出",
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable(onClick = onLogout)
+                    .padding(horizontal = 8.dp, vertical = 8.dp),
+            )
+        }
+        IconButton(onClick = onOpenSettings) {
             Icon(
-                imageVector = MusicIcons.ChevronRight,
-                contentDescription = null,
-                tint = primary.copy(alpha = 0.8f),
-                modifier = Modifier.size(20.dp),
+                imageVector = MusicIcons.Sliders,
+                contentDescription = "设置",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(21.dp),
             )
         }
     }
 }
 
-/** 数据概览小格：数字 + 名称（放在共享玻璃面板内）。 */
+/** 四个快捷入口：图标 + 名称 + 数量，横向均分，点按进入对应页面。 */
 @Composable
-private fun StatCard(
-    value: String,
+private fun QuickActions(
+    likedCount: Int?,
+    historyCount: Int,
+    downloadedCount: Int,
+    playlistCount: Int?,
+    onOpenLiked: () -> Unit,
+    onOpenHistory: () -> Unit,
+    onOpenDownloads: () -> Unit,
+    onOpenPlaylists: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        QuickAction(MusicIcons.Heart, "我喜欢的", likedCount, onOpenLiked, Modifier.weight(1f))
+        QuickAction(MusicIcons.History, "最近播放", historyCount, onOpenHistory, Modifier.weight(1f))
+        QuickAction(MusicIcons.DownloadDone, "已下载", downloadedCount, onOpenDownloads, Modifier.weight(1f))
+        QuickAction(MusicIcons.MusicNote, "我的歌单", playlistCount, onOpenPlaylists, Modifier.weight(1f))
+    }
+}
+
+@Composable
+private fun QuickAction(
+    icon: ImageVector,
     label: String,
+    count: Int?,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val primary = MaterialTheme.colorScheme.primary
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(26.dp))
+            .clip(RoundedCornerShape(16.dp))
             .clickable(onClick = onClick)
-            .padding(vertical = 15.dp),
+            .padding(vertical = 10.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text(
-            text = value,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-            color = if (value == "—" || value == "未登录") {
-                MaterialTheme.colorScheme.onSurfaceVariant
-            } else {
-                primary
-            },
-            maxLines = 1,
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.9f),
+            modifier = Modifier.size(24.dp),
         )
         Text(
             text = label,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = 3.dp),
+            fontSize = 12.sp,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.padding(top = 6.dp),
+            maxLines = 1,
+        )
+        // 数量行始终占位，四个入口的文字基线才对得齐
+        Text(
+            text = count?.takeIf { it > 0 }?.toString() ?: "—",
+            fontSize = 10.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
+            modifier = Modifier.padding(top = 1.dp),
             maxLines = 1,
         )
     }
 }
 
-/** 统计格之间的细分隔线。 */
 @Composable
-private fun TileDivider() {
-    Box(
-        modifier = Modifier
-            .height(40.dp)
-            .width(0.7.dp)
-            .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.14f)),
-    )
-}
-
-@Composable
-private fun SectionHeader(
+private fun SectionTitle(
     title: String,
-    subtitle: String? = null,
-    trailing: (@Composable () -> Unit)? = null,
+    action: String?,
+    onAction: () -> Unit,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(top = 18.dp, bottom = 8.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 20.dp, end = 16.dp, top = 18.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column(modifier = Modifier.weight(1f)) {
+        Text(
+            text = title,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(1f),
+        )
+        if (action != null) {
             Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
-            if (subtitle != null) {
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 2.dp),
-                )
-            }
-        }
-        trailing?.invoke()
-    }
-}
-
-/** 已下载入口：与设置卡同版式，说明文案随本机下载数量变化。 */
-@Composable
-private fun DownloadsCard(count: Int, onClick: () -> Unit) {
-    val primary = MaterialTheme.colorScheme.primary
-    GlassPanel(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(26.dp))
-                .clickable(onClick = onClick)
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
+                text = "$action ›",
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier
-                    .size(40.dp)
-                    .background(primary.copy(alpha = 0.12f), RoundedCornerShape(13.dp)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = MusicIcons.DownloadDone,
-                    contentDescription = null,
-                    tint = primary,
-                    modifier = Modifier.size(20.dp),
-                )
-            }
-            Column(modifier = Modifier.weight(1f).padding(horizontal = 12.dp)) {
-                Text(
-                    text = "已下载",
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.Medium,
-                )
-                Text(
-                    text = if (count > 0) "$count 首 · 断网也能听" else "把整首歌存到本机，离线也能听",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 1.dp),
-                )
-            }
-            Icon(
-                imageVector = MusicIcons.ChevronRight,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                modifier = Modifier.size(18.dp),
-            )
-        }
-    }
-}
-
-@Composable
-private fun SettingsCard(onOpenSettings: () -> Unit) {
-    val primary = MaterialTheme.colorScheme.primary
-    GlassPanel(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(26.dp))
-                .clickable(onClick = onOpenSettings)
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .background(primary.copy(alpha = 0.12f), RoundedCornerShape(13.dp)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = MusicIcons.Sliders,
-                    contentDescription = null,
-                    tint = primary,
-                    modifier = Modifier.size(20.dp),
-                )
-            }
-            Column(modifier = Modifier.weight(1f).padding(horizontal = 12.dp)) {
-                Text(
-                    text = "设置",
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.Medium,
-                )
-                Text(
-                    text = "主题、背景、桌面歌词与备用音源",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 1.dp),
-                )
-            }
-            Icon(
-                imageVector = MusicIcons.ChevronRight,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                modifier = Modifier.size(18.dp),
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable(onClick = onAction)
+                    .padding(horizontal = 6.dp, vertical = 6.dp),
             )
         }
     }
@@ -564,9 +394,9 @@ private fun SettingsCard(onOpenSettings: () -> Unit) {
 /** 网易云头像按显示尺寸解码，避免列表里拉全尺寸位图。 */
 private const val AVATAR_EDGE_PX = 240
 
-/** 账号卡副标题：网易云累计听歌（首）与本机收听时长（真实播放时长）拼在同一行。 */
+/** 账号副标题：网易云累计听歌（首）与本机收听时长（真实播放时长）拼在同一行。 */
 private fun accountSubtitle(session: NetEaseSession, listeningSeconds: Long): String {
-    if (!session.isLoggedIn) return "登录后同步推荐与个人歌单"
+    if (!session.isLoggedIn) return "登录后同步推荐、歌单与听歌记录"
     val parts = buildList {
         if (session.listenSongs > 0) add("累计听歌 ${session.listenSongs} 首")
         if (listeningSeconds > 0) add("本机收听 ${formatListeningTime(listeningSeconds)}")

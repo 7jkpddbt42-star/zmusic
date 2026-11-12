@@ -12,16 +12,11 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -31,9 +26,9 @@ import com.musicbox.app.ui.components.player.LyricPreviewPill
 import com.musicbox.app.ui.components.player.MediaHeader
 import com.musicbox.app.ui.components.player.PlayerArtwork
 import com.musicbox.app.ui.components.player.PlayerBackdrop
+import com.musicbox.app.ui.components.player.PlayerMoreMenu
 import com.musicbox.app.ui.components.player.ProgressSection
 import com.musicbox.app.ui.components.player.ProgressTimePlacement
-import com.musicbox.app.ui.components.player.SecondaryActions
 import com.musicbox.app.ui.components.player.TransportControls
 import com.musicbox.app.ui.player.PlaybackUiState
 
@@ -74,6 +69,11 @@ fun MinimalPlayerStyle(
                 foreground = Color.White,
                 onCollapse = actions.onCollapse,
                 onOpenQueue = actions.onOpenQueue,
+                actions = {
+                    PlayerMoreMenu(
+                        foreground = Color.White,
+                    )
+                },
             )
 
             Box(
@@ -84,9 +84,9 @@ fun MinimalPlayerStyle(
                     artworkUrl = state.artworkUrl,
                     onArtworkLoaded = actions.onArtworkLoaded,
                     modifier = Modifier.fillMaxWidth(0.86f).aspectRatio(1f),
-                    shape = RoundedCornerShape(32.dp),
-                    haloColor = MaterialTheme.colorScheme.primary,
-                    elevation = 30.dp,
+                    shape = RoundedCornerShape(28.dp),
+                    showHalo = false,
+                    elevation = 0.dp,
                     onClick = actions.onOpenLyric,
                 )
             }
@@ -132,35 +132,15 @@ fun MinimalPlayerStyle(
                 onPrevious = actions.onPrevious,
                 onNext = actions.onNext,
                 foreground = Color.White,
-                playForeground = Color.Black,
-                playSize = 74.dp,
-                playIconSize = 34.dp,
-                skipButtonSize = 52.dp,
-                skipIconSize = 32.dp,
-                skipBackground = Color.White.copy(alpha = 0.06f),
-                // 播放键：不是一块死白，而是带高光的浅渐变圆片 + 柔和外发光，
-                // 在深色背景上更像一枚实体按键
-                playContainer = { content ->
-                    Box(
-                        modifier = Modifier
-                            .size(74.dp)
-                            .shadow(
-                                elevation = 20.dp,
-                                shape = CircleShape,
-                                ambientColor = Color.White.copy(alpha = 0.22f),
-                                spotColor = Color.White.copy(alpha = 0.26f),
-                            )
-                            .clip(CircleShape)
-                            .background(
-                                Brush.linearGradient(
-                                    listOf(Color.White, Color(0xFFE6E6EC)),
-                                ),
-                            ),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        content()
-                    }
-                },
+                playForeground = Color.White,
+                playSize = 64.dp,
+                playIconSize = 42.dp,
+                skipButtonSize = 48.dp,
+                skipIconSize = 28.dp,
+                skipBackground = Color.Transparent,
+                spacing = 24.dp,
+                // 纯图标、无圆片、无阴影：与系统播放器一致的扁平控制条
+                playContainer = { content -> content() },
                 leading = {
                     ModeText(
                         modeLabel = modeLabel,
@@ -176,22 +156,7 @@ fun MinimalPlayerStyle(
                 },
             )
 
-            Spacer(modifier = Modifier.height(10.dp))
-
-            SecondaryActions(
-                onOpenLyric = actions.onOpenLyric,
-                onOpenQueue = actions.onOpenQueue,
-                onOpenStyleSwitcher = actions.onOpenStyleSwitcher,
-                onNotify = actions.onNotify,
-                speed = state.speed,
-                onSpeedChange = actions.onSetSpeed,
-                foreground = Color.White.copy(alpha = 0.82f),
-                iconSize = 19.dp,
-                itemSize = 40.dp,
-                spacing = 16.dp,
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(20.dp))
         }
     }
 }

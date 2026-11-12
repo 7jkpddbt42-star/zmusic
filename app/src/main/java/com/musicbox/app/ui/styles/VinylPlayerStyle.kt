@@ -59,7 +59,7 @@ import com.musicbox.app.ui.components.player.MediaHeader
 import com.musicbox.app.ui.components.player.PlayerBackdrop
 import com.musicbox.app.ui.components.player.ProgressSection
 import com.musicbox.app.ui.components.player.ProgressTimePlacement
-import com.musicbox.app.ui.components.player.SecondaryActions
+import com.musicbox.app.ui.components.player.PlayerMoreMenu
 import com.musicbox.app.ui.components.player.TransportControls
 import com.musicbox.app.ui.player.PlaybackUiState
 import kotlinx.coroutines.flow.first
@@ -125,6 +125,11 @@ fun VinylPlayerStyle(
                 foreground = Color.White,
                 onCollapse = actions.onCollapse,
                 onOpenQueue = actions.onOpenQueue,
+                actions = {
+                    PlayerMoreMenu(
+                        foreground = Color.White,
+                    )
+                },
             )
 
             Box(
@@ -210,22 +215,6 @@ fun VinylPlayerStyle(
                         foreground = Color.White.copy(alpha = 0.70f),
                     )
                 },
-            )
-
-            Spacer(modifier = Modifier.height(4.dp))
-
-            SecondaryActions(
-                onOpenLyric = actions.onOpenLyric,
-                onOpenQueue = actions.onOpenQueue,
-                onOpenStyleSwitcher = actions.onOpenStyleSwitcher,
-                onNotify = actions.onNotify,
-                speed = state.speed,
-                onSpeedChange = actions.onSetSpeed,
-                foreground = Color.White.copy(alpha = 0.78f),
-                iconSize = 17.dp,
-                itemSize = 36.dp,
-                spacing = 14.dp,
-                showSpeed = false,
             )
 
             Spacer(modifier = Modifier.height(8.dp))

@@ -135,7 +135,7 @@ internal fun QueueSheet(
     // 遮罩随抽屉一起过渡：进场 340ms、退场 260ms，与抽屉滑出同帧结束，
     // 避免抽屉已滑走、遮罩还剩一点暗色导致关闭瞬间闪一下。
     val scrimAlpha by animateFloatAsState(
-        targetValue = if (shown) 0.46f else 0f,
+        targetValue = if (shown) 0.50f else 0f,
         animationSpec = tween(if (shown) QUEUE_SLIDE_IN_MS else QUEUE_SLIDE_OUT_MS),
         label = "queueScrim",
     )
@@ -170,7 +170,9 @@ internal fun QueueSheet(
             GlassAmbientBackdrop(
                 background = background,
                 artworkUrl = artworkUrl,
-                scrim = MaterialTheme.colorScheme.surface.copy(alpha = scrimAlpha),
+                // 遮罩用黑色：把模糊封面压暗后白色状态栏图标才读得清，
+                // 同时让下方的浅色玻璃面板成为画面里最亮的一层
+                scrim = Color.Black.copy(alpha = scrimAlpha),
                 modifier = Modifier.fillMaxSize().glassBackdropSource(backdrop),
             )
 
@@ -205,6 +207,8 @@ internal fun QueueSheet(
                                 .fillMaxWidth()
                                 .fillMaxHeight(QUEUE_SHEET_HEIGHT_FRACTION),
                             shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+                            // 与「更多」面板一致：面板比模糊背景亮一层，行文字始终有底
+                            tint = MaterialTheme.colorScheme.surface.copy(alpha = 0.68f),
                         ) {
                             Column(
                                 modifier = Modifier
@@ -236,13 +240,26 @@ internal fun QueueSheet(
                                             style = MaterialTheme.typography.titleLarge,
                                             fontWeight = FontWeight.SemiBold,
                                         )
-                                        Text(
-                                            text = "${state.queue.size} 首 · 点击切换",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        )
                                     }
-                                    GlassPill(onClick = onCycleMode) {
+                                }
+
+                                // 睡眠定时入口放在队列抽屉里：9 种播放风格共用这一处，
+                                // 不必为每种风格的按钮排布再各加一个图标。
+                                var sleepMenuOpen by remember { mutableStateOf(false) }
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(start = 20.dp, end = 16.dp, bottom = 4.dp),
+                                    horizontalArrangement = Arrangement.Start,
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    // 抽屉面板本身是浅色玻璃，胶囊再用默认 8% 白会采样到
+                                    // 下面的深色模糊背景，变成深色块压在浅色面板上；改成
+                                    // 与面板同源的浅色 tint，胶囊才能读成「浅底深字」
+                                    GlassPill(
+                                        onClick = onCycleMode,
+                                        tint = MaterialTheme.colorScheme.surface.copy(alpha = 0.55f),
+                                    ) {
                                         Row(
                                             verticalAlignment = Alignment.CenterVertically,
                                             horizontalArrangement = Arrangement.Center,
@@ -265,20 +282,12 @@ internal fun QueueSheet(
                                             )
                                         }
                                     }
-                                }
-
-                                // 睡眠定时入口放在队列抽屉里：9 种播放风格共用这一处，
-                                // 不必为每种风格的按钮排布再各加一个图标。
-                                var sleepMenuOpen by remember { mutableStateOf(false) }
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(start = 20.dp, end = 16.dp, bottom = 4.dp),
-                                    horizontalArrangement = Arrangement.End,
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
+                                    Spacer(modifier = Modifier.width(8.dp))
                                     Box {
-                                        GlassPill(onClick = { sleepMenuOpen = true }) {
+                                        GlassPill(
+                                            onClick = { sleepMenuOpen = true },
+                                            tint = MaterialTheme.colorScheme.surface.copy(alpha = 0.55f),
+                                        ) {
                                             Row(
                                                 verticalAlignment = Alignment.CenterVertically,
                                                 horizontalArrangement = Arrangement.Center,
@@ -367,49 +376,10 @@ internal fun QueueSheet(
                                                 ),
                                             verticalAlignment = Alignment.CenterVertically,
                                         ) {
-                                            Column(modifier = Modifier.weight(1f)) {
-                                                Text(
-                                                    text = item.title,
-                                                    style = MaterialTheme.typography.bodyMedium,
-                                                    fontWeight = if (item.isCurrent) {
-                                                        FontWeight.SemiBold
-                                                    } else {
-                                                        FontWeight.Normal
-                                                    },
-                                                    color = if (item.isCurrent) {
-                                                        primary
-                                                    } else {
-                                                        MaterialTheme.colorScheme.onSurface
-                                                    },
-                                                    maxLines = 1,
-                                                    overflow = TextOverflow.Ellipsis,
-                                                )
-                                                Text(
-                                                    text = item.artist,
-                                                    style = MaterialTheme.typography.bodySmall,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                    maxLines = 1,
-                                                    overflow = TextOverflow.Ellipsis,
-                                                )
-                                            }
-                                            // 下一首播放：把这首插到当前曲目后面
-                                            IconButton(
-                                                onClick = { onPlayNext(item.index) },
-                                                modifier = Modifier.size(48.dp),
-                                                enabled = !item.isCurrent,
-                                            ) {
-                                                Icon(
-                                                    imageVector = MusicIcons.SkipNext,
-                                                    contentDescription = "下一首播放",
-                                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                                        .copy(alpha = if (item.isCurrent) 0.3f else 0.8f),
-                                                    modifier = Modifier.size(18.dp),
-                                                )
-                                            }
-                                            // 拖动手柄：按住上下拖动，松手后落到新位置
+                                            // 拖动手柄放在行首：右侧只留两个操作，歌名不会被挤窄
                                             Box(
                                                 modifier = Modifier
-                                                    .size(48.dp)
+                                                    .size(36.dp)
                                                     .pointerInput(item.index, state.queue.size) {
                                                         detectDragGestures(
                                                             onDragStart = {
@@ -455,20 +425,63 @@ internal fun QueueSheet(
                                                     imageVector = MusicIcons.DragHandle,
                                                     contentDescription = "拖动排序",
                                                     tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                                        .copy(alpha = 0.6f),
-                                                    modifier = Modifier.size(18.dp),
+                                                        .copy(alpha = 0.55f),
+                                                    modifier = Modifier.size(16.dp),
+                                                )
+                                            }
+                                            Column(
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .padding(start = 4.dp),
+                                            ) {
+                                                Text(
+                                                    text = item.title,
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    fontWeight = if (item.isCurrent) {
+                                                        FontWeight.SemiBold
+                                                    } else {
+                                                        FontWeight.Normal
+                                                    },
+                                                    color = if (item.isCurrent) {
+                                                        primary
+                                                    } else {
+                                                        MaterialTheme.colorScheme.onSurface
+                                                    },
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis,
+                                                )
+                                                Text(
+                                                    text = item.artist,
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis,
+                                                )
+                                            }
+                                            // 下一首播放：把这首插到当前曲目后面
+                                            IconButton(
+                                                onClick = { onPlayNext(item.index) },
+                                                modifier = Modifier.size(40.dp),
+                                                enabled = !item.isCurrent,
+                                            ) {
+                                                Icon(
+                                                    imageVector = MusicIcons.SkipNext,
+                                                    contentDescription = "下一首播放",
+                                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                                        .copy(alpha = if (item.isCurrent) 0.3f else 0.8f),
+                                                    modifier = Modifier.size(17.dp),
                                                 )
                                             }
                                             IconButton(
                                                 onClick = { onRemove(item.index) },
-                                                modifier = Modifier.size(48.dp),
+                                                modifier = Modifier.size(40.dp),
                                             ) {
                                                 Icon(
                                                     imageVector = MusicIcons.Trash,
                                                     contentDescription = "移除",
                                                     tint = MaterialTheme.colorScheme.onSurfaceVariant
                                                         .copy(alpha = 0.7f),
-                                                    modifier = Modifier.size(18.dp),
+                                                    modifier = Modifier.size(17.dp),
                                                 )
                                             }
                                         }

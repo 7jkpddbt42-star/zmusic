@@ -20,10 +20,9 @@ import com.musicbox.app.ui.components.BackgroundLayer
  * 这里改用用户选择的真实背景（视频会持续变化，封面会随歌曲切换），
  * 叠加遮罩只为保证前景文字可读；玻璃的模糊/折射因此始终有真实内容可采样。
  *
- * [coverBlurRadius] 刻意小于播放页的 48dp：页面级玻璃需要背景保留可辨认的色块与边缘，
- * 6dp 的玻璃模糊才有可见效果；48dp 预模糊会把背景抹平成纯色。
- * 取 3dp 而不是 6dp：与玻璃自身的 6dp 模糊拉开一档差距，
- * 卡片内外的柔化程度才看得出区别，同时整体仍是柔和的照片底。
+ * [coverBlurRadius] 取 20dp：页面级背景只需要一团柔和的色彩氛围，
+ * 不能让封面上的文字/人脸可辨认地与正文抢注意力；同时保留大面积色块，
+ * 玻璃自身的 6dp 模糊仍有可采样的边缘，不会退化成纯色。
  */
 @Composable
 fun GlassAmbientBackdrop(
@@ -31,7 +30,7 @@ fun GlassAmbientBackdrop(
     artworkUrl: String?,
     modifier: Modifier = Modifier,
     scrim: Color = MaterialTheme.colorScheme.surface.copy(alpha = 0.32f),
-    coverBlurRadius: Dp = 3.dp,
+    coverBlurRadius: Dp = 20.dp,
 ) {
     // API < 31 没有 RenderEffect，玻璃只能走渐变伪玻璃，背景不会被糊开；
     // 若仍用 35% 遮罩，亮而杂的背景会让卡片文字丢掉对比度。

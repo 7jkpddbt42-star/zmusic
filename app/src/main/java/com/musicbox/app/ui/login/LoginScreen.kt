@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -22,6 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.google.zxing.BarcodeFormat
@@ -29,6 +32,7 @@ import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 import com.musicbox.app.data.BackgroundSpec
+import com.musicbox.app.ui.components.MusicIcons
 import com.musicbox.app.ui.components.liquidglass.GlassAmbientBackdrop
 import com.musicbox.app.ui.components.liquidglass.glassBackdropSource
 import com.musicbox.app.ui.components.liquidglass.liquidGlass
@@ -79,9 +83,10 @@ fun LoginScreen(
         ) {
             Text("扫码登录网易云", style = MaterialTheme.typography.titleLarge)
             Text(
-                text = "登录后可同步歌单、喜欢与每日推荐；会员歌曲仍需网易云会员权限。",
+                text = "登录后同步歌单、我喜欢的音乐与每日推荐",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
                 modifier = Modifier.padding(top = 8.dp, bottom = 24.dp),
             )
 
@@ -128,8 +133,21 @@ fun LoginScreen(
                 }
                 is LoginUiState.Success -> Text("登录成功")
             }
+        }
 
-            TextButton(onClick = onBack, modifier = Modifier.padding(top = 24.dp)) { Text("返回") }
+        // 返回入口固定在左上角：整屏覆盖页不该让用户滚到底部找返回
+        IconButton(
+            onClick = onBack,
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .statusBarsPadding()
+                .padding(start = 6.dp, top = 2.dp),
+        ) {
+            Icon(
+                imageVector = MusicIcons.ChevronLeft,
+                contentDescription = "返回",
+                modifier = Modifier.size(22.dp),
+            )
         }
     }
 }

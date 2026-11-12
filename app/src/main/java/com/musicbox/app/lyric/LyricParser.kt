@@ -41,6 +41,45 @@ object LyricParser {
     /** LRC 元信息标签：[by:xxx] [ti:xxx] [offset:±ms] … */
     private val metaRegex = Regex("""^\[([A-Za-z]+):(.*)]$""")
 
+    /**
+     * 版权/制作信息行。部分音源把 "OP: xxx"、"作词: xxx" 之类的制作名单
+     * 直接混在带时间戳的正文里，落到界面就会变成"歌词"显示出来。
+     */
+    private val creditKeyRegex = Regex(
+        """(?:^|[\s/&、，·+＋人])(作词|作曲|编曲|制作|出品|发行|监制|统筹|策划|录音|混响|混音|母带|和声|和音|伴唱|配唱|人声|吉他|贝斯|鼓|键盘|弦乐|钢琴|架子鼓|打击乐|手鼓|非洲鼓|笛子|长笛|短笛|竹笛|二胡|古筝|琵琶|中阮|箫|唢呐|口琴|手风琴|小提琴|中提琴|大提琴|低音提琴|萨克斯|小号|长号|圆号|合成器|音效|采样|后期|混录|缩混|监唱|录音室|录音师|混音师|母带师|美术|封面|设计|插画|视觉|企划|宣发|推广|文案|翻译|校对|鸣谢|感谢|特别鸣谢|编辑|助理|处理|编写|指导|团队|工作室|版权|词|曲|编|op|sp|producer|composer|lyricist|arranger|mixing|mastering|publisher|label|engineer|editor|supervisor|executive|artwork|design|vocal)(?:$|[\s/&、，·+＋人])""",
+        RegexOption.IGNORE_CASE,
+    )
+
+    /**
+     * 冒号前最多这么长才算制作信息。真正的歌词几乎不会在短前缀里塞进
+     * "混音/母带" 之类的词，而 "混音&母带：周天澈" 这种复合写法能被稳定识别。
+     */
+    private const val CREDIT_PREFIX_MAX = 20
+
+    /**
+     * 角色词被修饰后落在头部末尾时（"人声编辑"、"母带后期处理"、"和声编写"），
+     * 左侧已经不是分隔符，上一条正则匹配不到；只要头部以角色词结尾就同样算制作信息。
+     */
+    private val creditSuffixRegex = Regex(
+        """(作词|作曲|编曲|制作|出品|发行|监制|统筹|策划|录音|混响|混音|母带|和声|和音|伴唱|配唱|人声|编辑|助理|处理|编写|指导|后期|混录|缩混|监唱|团队|工作室|词|曲|编)$""",
+    )
+
+    /** 网易云常见的版权声明行（没有冒号），同样不该出现在歌词里。 */
+    private val boilerplateRegex = Regex(
+        """未经.{0,6}许可|不得翻唱|不得翻录|本歌曲来自|版权归.{0,12}所有""",
+    )
+
+    private fun isCreditLine(text: String): Boolean {
+        val line = text.trim()
+        if (boilerplateRegex.containsMatchIn(line)) return true
+        // 兼容 "混音&母带："、"作词/作曲："、"词 :" 等复合或带空格的写法
+        val colon = line.indexOfFirst { it == ':' || it == '：' }
+        if (colon <= 0) return false
+        val head = line.substring(0, colon)
+        return head.length <= CREDIT_PREFIX_MAX &&
+            (creditKeyRegex.containsMatchIn(head) || creditSuffixRegex.containsMatchIn(head))
+    }
+
     /** 解析中间态：durationMs 为 null 表示"待用下一行起始填充"。 */
     private data class Parsed(
         var startMs: Long,
@@ -57,12 +96,14 @@ object LyricParser {
             .takeIf { list -> list.any { it.words.isNotEmpty() } }
             ?: parseLrc(data.lrc)
 
-        if (main.isEmpty()) return LyricTimeline(emptyList())
+        // 制作名单不是歌词：过滤后再对齐，避免迷你条/歌词页开头出现 "OP: xxx"
+        val lyric = main.filterNot { isCreditLine(it.text) }
+        if (lyric.isEmpty()) return LyricTimeline(emptyList())
 
-        val translation = parseLrc(data.translation)
-        val romaji = parseLrc(data.romaji)
+        val translation = parseLrc(data.translation).filterNot { isCreditLine(it.text) }
+        val romaji = parseLrc(data.romaji).filterNot { isCreditLine(it.text) }
 
-        val withAlignment = main.map { line ->
+        val withAlignment = lyric.map { line ->
             line.copy(
                 translation = nearestText(translation, line.startMs),
                 romaji = nearestText(romaji, line.startMs),

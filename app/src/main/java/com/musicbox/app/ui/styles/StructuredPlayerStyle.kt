@@ -33,7 +33,7 @@ import com.musicbox.app.ui.components.player.PlayerArtwork
 import com.musicbox.app.ui.components.player.PlayerBackdrop
 import com.musicbox.app.ui.components.player.ProgressSection
 import com.musicbox.app.ui.components.player.ProgressTimePlacement
-import com.musicbox.app.ui.components.player.SecondaryActions
+import com.musicbox.app.ui.components.player.PlayerMoreMenu
 import com.musicbox.app.ui.player.PlaybackUiState
 
 /**
@@ -73,6 +73,11 @@ fun StructuredPlayerStyle(
                 foreground = Color.White,
                 onCollapse = actions.onCollapse,
                 onOpenQueue = actions.onOpenQueue,
+                actions = {
+                    PlayerMoreMenu(
+                        foreground = Color.White,
+                    )
+                },
             )
 
             Box(
@@ -168,23 +173,6 @@ fun StructuredPlayerStyle(
                         onClick = actions.onNext,
                     )
                 }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                SecondaryActions(
-                    onOpenLyric = actions.onOpenLyric,
-                    onOpenQueue = actions.onOpenQueue,
-                    onOpenStyleSwitcher = actions.onOpenStyleSwitcher,
-                    onNotify = actions.onNotify,
-                    speed = state.speed,
-                    onSpeedChange = actions.onSetSpeed,
-                    foreground = Color.White.copy(alpha = 0.86f),
-                    iconSize = 19.dp,
-                    itemSize = 40.dp,
-                    spacing = 14.dp,
-                )
             }
 
             Spacer(modifier = Modifier.height(8.dp))

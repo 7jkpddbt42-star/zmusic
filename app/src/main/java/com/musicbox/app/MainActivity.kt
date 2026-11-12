@@ -17,15 +17,24 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -33,6 +42,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
@@ -60,6 +70,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
@@ -103,6 +114,7 @@ import com.musicbox.app.ui.home.AllPlaylistsScreen
 import com.musicbox.app.ui.home.HomeScreen
 import com.musicbox.app.ui.home.HomeViewModel
 import com.musicbox.app.ui.home.PlaylistDetailScreen
+import com.musicbox.app.ui.home.PlaylistDetailUiState
 import com.musicbox.app.ui.home.PlaylistTarget
 import com.musicbox.app.ui.library.DownloadedScreen
 import com.musicbox.app.ui.library.HistoryScreen
@@ -559,6 +571,26 @@ private fun MusicBoxApp(
     var overlayHeightPx by remember { mutableStateOf(0) }
     val overlayBottomPadding = with(LocalDensity.current) { overlayHeightPx.toDp() }
 
+    // 输入法弹出时，迷你条与标签栏本来就被键盘盖住；若仍为它们留出底部空隙，
+    // 页面（尤其搜索结果）会在键盘上方凭空少掉一截，页面里再补一次键盘高度就成双重留白。
+    // 所以 IME 可见时把这段留白归零，只让页面按键盘高度避让。
+    val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+    val contentBottomPadding = if (imeVisible) 0.dp else overlayBottomPadding
+
+    // 标签页的滚动位置与「入场动画是否已播放」由壳层持有：
+    // 页面切走时会被销毁，状态放在这里才能避免切回时滚回顶部、重播整页入场。
+    val homeScroll = rememberScrollState()
+    val mineScroll = rememberScrollState()
+    var homeEntranceDone by remember { mutableStateOf(false) }
+    var searchEntranceDone by remember { mutableStateOf(false) }
+    var mineEntranceDone by remember { mutableStateOf(false) }
+
+    // 歌单详情关闭后保留最后一份数据，供退出动画期间继续渲染
+    var lastDetail by remember { mutableStateOf<PlaylistDetailUiState?>(null) }
+    LaunchedEffect(homeDetail) {
+        if (homeDetail != null) lastDetail = homeDetail
+    }
+
     // 状态栏/导航栏图标：浅色主题用深色图标；播放页/歌词页/验收页背景始终压暗，固定用浅色图标
     val darkSystemSurface = MaterialTheme.colorScheme.surface.luminance() < 0.5f
     SystemBarsIcons(lightIcons = darkSystemSurface || showPlayer || showLyric || showGlassDemo)
@@ -575,7 +607,9 @@ private fun MusicBoxApp(
                     GlassAmbientBackdrop(
                         background = backgroundSpec,
                         artworkUrl = playState.artworkUrl,
-                        scrim = MaterialTheme.colorScheme.surface.copy(alpha = 0.42f),
+                        // 遮罩只负责压住封面细节，页底色另叠一层（见下方 0.36），
+                        // 两层合计约五成白，既保留封面的色彩氛围又不影响正文阅读
+                        scrim = MaterialTheme.colorScheme.surface.copy(alpha = 0.28f),
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
@@ -584,14 +618,64 @@ private fun MusicBoxApp(
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
+                            // 页面底色做成纵向渐变：顶部留更多封面色彩，视线进入内容后
+                            // 逐步过渡到接近纸面的浅色。均匀半透明会把深色封面压成一整片
+                            // 灰蒙层，渐变则像光从顶部漏进页面，列表区始终干净好读。
+                            .background(
+                                Brush.verticalGradient(
+                                    0f to MaterialTheme.colorScheme.surface.copy(alpha = 0.30f),
+                                    0.42f to MaterialTheme.colorScheme.surface.copy(alpha = 0.62f),
+                                    1f to MaterialTheme.colorScheme.surface.copy(alpha = 0.80f),
+                                ),
+                            )
                             .windowInsetsPadding(
                                 WindowInsets.safeDrawing.only(
                                     WindowInsetsSides.Top + WindowInsetsSides.Horizontal,
                                 ),
                             )
-                            .padding(bottom = overlayBottomPadding),
+                            .padding(bottom = contentBottomPadding),
                     ) {
-                        when (tab) {
+                        // 记录各标签页已经播过入场，切回来时不再重播
+                        LaunchedEffect(tab) {
+                            when (tab) {
+                                MainTab.HOME -> homeEntranceDone = true
+                                MainTab.SEARCH -> searchEntranceDone = true
+                                MainTab.MINE -> mineEntranceDone = true
+                            }
+                        }
+
+                        AnimatedContent(
+                            targetState = tab,
+                            transitionSpec = {
+                                // 旧页快速淡出并极轻地上浮（视差），新页稍晚淡入、
+                                // 从下方一小段距离浮起。两层只在很短的窗口内重叠，
+                                // 既没有双层文字重影，也不是生硬硬切。
+                                (
+                                    fadeIn(
+                                        tween(260, delayMillis = 50, easing = FastOutSlowInEasing),
+                                    ) + slideInVertically(
+                                        animationSpec = tween(
+                                            durationMillis = 340,
+                                            delayMillis = 50,
+                                            easing = FastOutSlowInEasing,
+                                        ),
+                                        initialOffsetY = { height -> height / 64 },
+                                    )
+                                    togetherWith (
+                                        fadeOut(tween(120, easing = FastOutLinearInEasing)) +
+                                            slideOutVertically(
+                                                animationSpec = tween(
+                                                    durationMillis = 200,
+                                                    easing = FastOutLinearInEasing,
+                                                ),
+                                                targetOffsetY = { height -> -height / 110 },
+                                            )
+                                        )
+                                ).using(SizeTransform(clip = false))
+                            },
+                            label = "tabSwitch",
+                        ) { targetTab ->
+                            when (targetTab) {
                             MainTab.HOME -> HomeScreen(
                                 state = homeState,
                                 session = session,
@@ -608,7 +692,10 @@ private fun MusicBoxApp(
                                     playerVm.play(songs, index)
                                     songs.getOrNull(index)?.let(libraryVm::recordPlayed)
                                 },
+                                onOpenSearch = { tab = MainTab.SEARCH },
                                 modifier = Modifier,
+                                scrollState = homeScroll,
+                                animateEntrance = !homeEntranceDone,
                             )
                             MainTab.SEARCH -> SearchScreen(
                                 state = searchState,
@@ -623,6 +710,7 @@ private fun MusicBoxApp(
                                     searchState.results.getOrNull(index)?.let { libraryVm.recordPlayed(it) }
                                 },
                                 modifier = Modifier,
+                                animateEntrance = !searchEntranceDone,
                             )
                             MainTab.MINE -> MineScreen(
                                 session = session,
@@ -642,14 +730,17 @@ private fun MusicBoxApp(
                                 onOpenTarget = homeVm::openDetail,
                                 onOpenPlaylists = { showPlaylists = true },
                                 modifier = Modifier,
+                                scrollState = mineScroll,
+                                animateEntrance = !mineEntranceDone,
                             )
+                            }
                         }
 
                         // 列表类覆盖页放在内容区内渲染：底部迷你播放条与导航保持可见、可点。
                         // 之前它们画在整个壳层之上，会把迷你条一起盖住。
 
                         // 最近播放（从「我的」进入）
-                        if (showHistory) {
+                        AnimatedVisibility(visible = showHistory, enter = OverlayEnter, exit = OverlayExit) {
                             BackHandler { showHistory = false }
                             GlassOverlay(
                                 background = backgroundSpec,
@@ -674,7 +765,7 @@ private fun MusicBoxApp(
                         }
 
                         // 已下载（从「我的」进入）：点歌直接读本地文件，行尾可删除
-                        if (showDownloads) {
+                        AnimatedVisibility(visible = showDownloads, enter = OverlayEnter, exit = OverlayExit) {
                             BackHandler { showDownloads = false }
                             GlassOverlay(
                                 background = backgroundSpec,
@@ -731,7 +822,7 @@ private fun MusicBoxApp(
                         }
 
                         // 全部歌单（首页/「我的」只预览前几个，完整列表走这里的 LazyColumn）
-                        if (showPlaylists) {
+                        AnimatedVisibility(visible = showPlaylists, enter = OverlayEnter, exit = OverlayExit) {
                             BackHandler { showPlaylists = false }
                             GlassOverlay(
                                 background = backgroundSpec,
@@ -756,7 +847,14 @@ private fun MusicBoxApp(
                         }
 
                         // 歌单详情（每日推荐 / 我喜欢的音乐 / 个人歌单）
-                        homeDetail?.let { detail ->
+                        AnimatedVisibility(
+                            visible = homeDetail != null,
+                            enter = OverlayEnter,
+                            exit = OverlayExit,
+                        ) {
+                            // 关闭时 homeDetail 立刻变 null，退出动画期间用最后一份数据顶着，
+                            // 否则收起的一瞬间内容会闪空
+                            val detail = homeDetail ?: lastDetail ?: return@AnimatedVisibility
                             BackHandler { homeVm.closeDetail() }
                             GlassOverlay(
                                 background = backgroundSpec,
@@ -802,6 +900,11 @@ private fun MusicBoxApp(
                 }
             }
 
+            // 迷你条按「是否有当前歌曲」显隐：收起期间保留最后一份有效状态，
+            // 让退出动画还有内容可渲染，不会在最后一帧突然塌成空白。
+            var lastBarState by remember { mutableStateOf<PlaybackUiState?>(null) }
+            if (playState.hasCurrent) lastBarState = playState
+
             // 底部浮层：悬浮玻璃迷你条 + 导航胶囊，四周留白并避开手势条
             Column(
                 modifier = Modifier
@@ -811,16 +914,33 @@ private fun MusicBoxApp(
                     .onSizeChanged { overlayHeightPx = it.height },
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                NowPlayingBar(
-                    state = playState,
-                    source = connection,
-                    onExpand = {
-                        showLyric = false
-                        showPlayer = true
-                    },
-                    onTogglePlay = playerVm::togglePlay,
-                    lyricLine = currentLineText,
-                )
+                // 首曲开始播放时迷你条从零高度展开、淡入，页面底部留白同步过渡，
+                // 不会让整页内容瞬间被顶起一截。
+                AnimatedVisibility(
+                    visible = playState.hasCurrent,
+                    enter = expandVertically(
+                        animationSpec = tween(260, easing = FastOutSlowInEasing),
+                        expandFrom = Alignment.Bottom,
+                    ) + fadeIn(tween(220, easing = FastOutSlowInEasing)),
+                    exit = shrinkVertically(
+                        animationSpec = tween(220, easing = FastOutSlowInEasing),
+                        shrinkTowards = Alignment.Bottom,
+                    ) + fadeOut(tween(140, easing = FastOutLinearInEasing)),
+                    label = "miniBar",
+                ) {
+                    lastBarState?.let { barState ->
+                        NowPlayingBar(
+                            state = barState,
+                            source = connection,
+                            onExpand = {
+                                showLyric = false
+                                showPlayer = true
+                            },
+                            onTogglePlay = playerVm::togglePlay,
+                            lyricLine = currentLineText,
+                        )
+                    }
+                }
                 BottomTabs(
                     current = tab,
                     onSelect = { next ->
@@ -942,11 +1062,20 @@ private fun MusicBoxApp(
     val playerLayer: @Composable () -> Unit = {
         // 背景模糊档位下发到所有播放页风格；设置在播放页打开时修改也会立即生效
         CompositionLocalProvider(LocalPlayerBackgroundBlur provides backgroundBlurPref.radiusDp.dp) {
-            // 播放页整层：淡入淡出，不再从底部滑入
+            // 播放页整层：从底部滑入 / 向下滑出，与页面内的下滑收起手势同向。
+            // 只做位移、不做整层淡入：播放层自带不透明背景，滑动时像一张完整的
+            // 页面被推上来，不会出现两层互相透叠的发灰中间态。
             AnimatedVisibility(
                 visible = showPlayer,
-                enter = fadeIn(tween(320)),
-                exit = fadeOut(tween(260)),
+                enter = slideInVertically(
+                    animationSpec = tween(420, easing = FastOutSlowInEasing),
+                    initialOffsetY = { height -> height },
+                ),
+                exit = slideOutVertically(
+                    animationSpec = tween(300, easing = FastOutLinearInEasing),
+                    targetOffsetY = { height -> height },
+                ),
+                label = "playerLayer",
             ) {
                 // 播放页只订阅结构态：位置由进度条逐帧读取。
                 // 若这里直接收完整状态，250ms 的位置刷新会让 9 种风格整页重组，玻璃表面也要跟着重算。
@@ -957,25 +1086,16 @@ private fun MusicBoxApp(
                 }.collectAsStateWithLifecycle(initialValue = PlaybackUiState())
                 // 不透明底色：播放页 ↔ 歌词页交叉淡化时不会透出下面的主界面
                 Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
-                    // 播放页 ⇄ 歌词页：整层交叉淡化，播放页 UI 慢慢退场、歌词页慢慢浮现。
-                    // 用显式 alpha 过渡而不是两个 AnimatedVisibility，退场一侧在动画期间
-                    // 始终留在组合里，不会出现中途被抽走导致的闪断。
+                    // 播放页 ⇄ 歌词页：歌词页整层从底部滑上来盖住播放页。
+                    // 不做两层互相淡出：两层同时半透明会透出底下的浅色 surface，
+                    // 中途整页发白、播放页缩放还会在四周露出一圈白边。
+                    // 播放页始终不透明留在底层，歌词页向上滑入，视觉上就是网易云/Apple Music 的歌词层。
                     val lyricFraction by animateFloatAsState(
                         targetValue = if (showLyric) 1f else 0f,
-                        animationSpec = tween(durationMillis = 420, easing = FastOutSlowInEasing),
-                        label = "lyricCrossfade",
+                        animationSpec = tween(durationMillis = 380, easing = FastOutSlowInEasing),
+                        label = "lyricSlide",
                     )
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .graphicsLayer {
-                                alpha = 1f - lyricFraction
-                                // 极轻微后退，让歌词页看起来浮在播放页之上
-                                val scale = 1f - 0.02f * lyricFraction
-                                scaleX = scale
-                                scaleY = scale
-                            },
-                    ) {
+                    Box(modifier = Modifier.fillMaxSize()) {
                         PlayerScreen(
                             state = playerState,
                             source = connection,
@@ -994,7 +1114,10 @@ private fun MusicBoxApp(
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .graphicsLayer { alpha = lyricFraction },
+                                .graphicsLayer {
+                                    val height = size.height
+                                    translationY = (1f - lyricFraction) * height
+                                },
                         ) {
                             LyricScreen(
                                 state = lyricState,
@@ -1049,7 +1172,7 @@ private fun MusicBoxApp(
         )
     }
 
-    if (showLogin) {
+    AnimatedVisibility(visible = showLogin, enter = OverlayEnter, exit = OverlayExit) {
         // 系统返回键回到上一页，而不是直接退出应用
         BackHandler { loginVm.reset(); showLogin = false }
         LoginScreen(
@@ -1067,7 +1190,7 @@ private fun MusicBoxApp(
         )
     }
 
-    if (showSettings) {
+    AnimatedVisibility(visible = showSettings, enter = OverlayEnter, exit = OverlayExit) {
         // 系统返回键回到上一页，而不是直接退出应用
         BackHandler { showSettings = false }
         SettingsScreen(
@@ -1208,7 +1331,7 @@ private fun MusicBoxApp(
     }
 
     // 全屏纹理验收页：同窗口覆盖，状态栏图标按深色背景切浅色（无独立 Dialog 窗口）
-    if (showGlassDemo) {
+    AnimatedVisibility(visible = showGlassDemo, enter = OverlayEnter, exit = OverlayExit) {
         BackHandler { showGlassDemo = false }
         Box(modifier = Modifier.fillMaxSize().background(Color(0xFF14141A))) {
             LiquidGlassPreviewContent()
@@ -1333,7 +1456,8 @@ private fun GlassOverlay(
         GlassAmbientBackdrop(
             background = background,
             artworkUrl = artworkUrl,
-            scrim = MaterialTheme.colorScheme.surface.copy(alpha = 0.42f),
+            // 列表覆盖页以可读性优先：遮罩比标签页更重，背景只留氛围不抢正文
+            scrim = MaterialTheme.colorScheme.surface.copy(alpha = 0.58f),
             modifier = Modifier.fillMaxSize().glassBackdropSource(backdrop),
         )
         CompositionLocalProvider(LocalGlassBackdrop provides backdrop) {
@@ -1370,3 +1494,20 @@ private fun Context.findActivity(): Activity? {
     }
     return null
 }
+
+/**
+ * 覆盖页统一的进出场：整页从下往上托起一小段，退出更快地落回。
+ * 不做整层淡入，避免与下层标签页互相透叠；内容区另有 Entrance 逐块入场，
+ * 整页先到位、内容再依次浮现，层次更干净。
+ */
+private val OverlayEnter: EnterTransition =
+    slideInVertically(
+        animationSpec = tween(durationMillis = 380, easing = FastOutSlowInEasing),
+        initialOffsetY = { height -> height / 12 },
+    )
+
+private val OverlayExit: ExitTransition =
+    slideOutVertically(
+        animationSpec = tween(durationMillis = 280, easing = FastOutLinearInEasing),
+        targetOffsetY = { height -> height / 12 },
+    )

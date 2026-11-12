@@ -92,6 +92,7 @@ fun PlayerTopBar(
     modifier: Modifier = Modifier,
     title: String = "正在播放",
     titleSize: TextUnit = 15.sp,
+    actions: (@Composable () -> Unit)? = null,
 ) {
     Row(
         modifier = modifier.fillMaxWidth().height(52.dp),
@@ -112,6 +113,7 @@ fun PlayerTopBar(
             textAlign = TextAlign.Center,
             modifier = Modifier.weight(1f),
         )
+        actions?.invoke()
         IconButton(onClick = onOpenQueue) {
             Icon(
                 imageVector = MusicIcons.Queue,

@@ -3,6 +3,7 @@ package com.musicbox.app.ui.lyric
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -18,13 +19,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -39,7 +41,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.graphicsLayer
@@ -57,7 +61,7 @@ import com.musicbox.app.lyric.wordProgress
 import com.musicbox.app.player.PositionSource
 import com.musicbox.app.ui.components.MusicIcons
 import com.musicbox.app.ui.components.liquidglass.glassBackdropSource
-import com.musicbox.app.ui.components.liquidglass.liquidGlass
+import com.musicbox.app.ui.components.liquidglass.LocalGlassBackdrop
 import com.musicbox.app.ui.components.liquidglass.rememberGlassBackdrop
 import com.musicbox.app.ui.components.player.PlayerBackdrop
 import kotlinx.coroutines.flow.collectLatest
@@ -147,23 +151,34 @@ internal fun LyricScreen(
                 .statusBarsPadding()
                 .navigationBarsPadding(),
         ) {
-            // 顶部返回/歌名/译音开关：整行包进一块玻璃胶囊
+            // 顶部返回/歌名/译音开关：直接压在背景上，不再套玻璃胶囊。
+            // 浅色主题下玻璃胶囊会渲染成一条白底，切换歌词时看起来就是"背景发白、有白边"。
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 6.dp)
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
                     // 顶栏空白处吞掉点击，避免误触整页的「返回」手势
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
                         onClick = {},
                     )
-                    .liquidGlass(
-                        backdrop = backdrop,
-                        shape = RoundedCornerShape(28.dp),
-                        blurRadius = 6.dp,
-                        tint = Color.White.copy(alpha = 0.08f),
-                    ),
+                    // 顶栏下滑返回：歌词列表本身要滚动，所以只让顶栏接住下滑手势
+                    .pointerInput(Unit) {
+                        var total = 0f
+                        detectVerticalDragGestures(
+                            onDragStart = { total = 0f },
+                            onVerticalDrag = { change, dy ->
+                                if (dy > 0f) {
+                                    change.consume()
+                                    total += dy
+                                }
+                            },
+                            onDragEnd = {
+                                if (total > 64.dp.toPx()) onCollapse()
+                            },
+                        )
+                    },
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 IconButton(onClick = onCollapse) {
@@ -208,38 +223,57 @@ internal fun LyricScreen(
                 }
             }
 
-            when (val s = state) {
-                is LyricUiState.Ready -> when (lyricStyle) {
-                    LyricStyle.Focus -> FocusedLyricList(
-                        lines = s.timeline.lines,
-                        source = source,
-                        showTranslation = showTranslation,
-                        showRomaji = showRomaji,
-                        onLineClick = onSeek,
-                        modifier = Modifier.weight(1f),
-                    )
+            Box(modifier = Modifier.weight(1f)) {
+                when (val s = state) {
+                    is LyricUiState.Ready -> when (lyricStyle) {
+                        LyricStyle.Focus -> FocusedLyricList(
+                            lines = s.timeline.lines,
+                            source = source,
+                            showTranslation = showTranslation,
+                            showRomaji = showRomaji,
+                            onLineClick = onSeek,
+                            modifier = Modifier.fillMaxSize(),
+                        )
 
-                    LyricStyle.Classic -> ClassicLyricList(
-                        lines = s.timeline.lines,
-                        source = source,
-                        showTranslation = showTranslation,
-                        showRomaji = showRomaji,
-                        onLineClick = onSeek,
-                        modifier = Modifier.weight(1f),
-                    )
+                        LyricStyle.Classic -> ClassicLyricList(
+                            lines = s.timeline.lines,
+                            source = source,
+                            showTranslation = showTranslation,
+                            showRomaji = showRomaji,
+                            onLineClick = onSeek,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+
+                    else -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text(
+                            text = when (s) {
+                                LyricUiState.Loading -> "歌词加载中…"
+                                LyricUiState.Failed -> "歌词获取失败"
+                                else -> "暂无歌词"
+                            },
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Ink.copy(alpha = 0.60f),
+                        )
+                    }
                 }
 
-                else -> Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                    Text(
-                        text = when (s) {
-                            LyricUiState.Loading -> "歌词加载中…"
-                            LyricUiState.Failed -> "歌词获取失败"
-                            else -> "暂无歌词"
-                        },
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = Ink.copy(alpha = 0.60f),
-                    )
-                }
+                // 顶部渐隐：列表滚到顶栏下方时，行会被列表上边界硬切出一道半截字。
+                // 用背景色到透明的渐变盖住切边，视觉上像被柔化遮罩吞掉，而不是被裁断。
+                // 渐变向上延伸到顶栏里 64dp：若正好从列表边界开始，会留下一条横向亮暗分界线。
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .offset(y = (-64).dp)
+                        .height(120.dp)
+                        .background(
+                            Brush.verticalGradient(
+                                0f to Color.Black.copy(alpha = 0.02f),
+                                0.53f to Color.Black.copy(alpha = 0.24f),
+                                1f to Color.Transparent,
+                            ),
+                        ),
+                )
             }
         }
         }

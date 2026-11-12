@@ -30,12 +30,17 @@ private val ENTRANCE_OFFSET = 26.dp
 fun Entrance(
     index: Int = 0,
     modifier: Modifier = Modifier,
+    // 标签页再次进入时不重播入场：只在本次会话第一次进入时播放一次
+    animate: Boolean = true,
     content: @Composable () -> Unit,
 ) {
-    val progress = remember { Animatable(0f) }
+    // 初始是否播放只在实例创建时判定一次，后续 recomposition 不改变已开始的动画
+    val animateOnCreate = remember { animate }
+    val progress = remember { Animatable(if (animateOnCreate) 0f else 1f) }
     val distance = with(LocalDensity.current) { ENTRANCE_OFFSET.toPx() }
 
     LaunchedEffect(Unit) {
+        if (!animateOnCreate) return@LaunchedEffect
         delay(START_DELAY_MS + index * STAGGER_MS)
         progress.animateTo(
             targetValue = 1f,

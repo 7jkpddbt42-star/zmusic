@@ -17,10 +17,19 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.musicbox.app.model.Song
 import com.musicbox.app.ui.theme.ArtworkImage
 import com.musicbox.app.ui.theme.THUMB_EDGE_PX
+
+/**
+ * 玻璃列表面板的内容高度：行高 64dp（封面 44 + 上下 10）+ 行距 2dp + 面板内边距 16dp。
+ * 短列表用它给面板封顶，面板贴着内容收住，不会在页底留下一大块空玻璃；
+ * 长列表的封顶值超过可用高度，面板自然铺满剩余空间。
+ */
+internal fun songListPanelHeight(itemCount: Int): Dp =
+    (64 * itemCount + 2 * (itemCount - 1).coerceAtLeast(0) + 16).dp
 
 /** 歌曲行（历史 / 歌单详情 / 首页共用）：封面 + 歌名 + 歌手专辑 + 右侧附加内容。 */
 @Composable

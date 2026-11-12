@@ -102,7 +102,6 @@ fun PlayerArtwork(
                         ambientColor = Color.Black.copy(alpha = 0.20f),
                         spotColor = Color.Black.copy(alpha = 0.28f),
                     )
-                    .border(1.dp, Color.White.copy(alpha = 0.14f), shape)
                     .clickable(onClick = onClick),
             )
         }

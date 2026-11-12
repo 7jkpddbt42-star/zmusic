@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
@@ -29,9 +28,9 @@ import com.musicbox.app.ui.components.player.LyricPreviewPill
 import com.musicbox.app.ui.components.player.MediaHeader
 import com.musicbox.app.ui.components.player.PlayerArtwork
 import com.musicbox.app.ui.components.player.PlayerBackdrop
+import com.musicbox.app.ui.components.player.PlayerMoreMenu
 import com.musicbox.app.ui.components.player.ProgressSection
 import com.musicbox.app.ui.components.player.ProgressTimePlacement
-import com.musicbox.app.ui.components.player.SecondaryActions
 import com.musicbox.app.ui.components.player.TransportControls
 import com.musicbox.app.ui.components.player.rememberPlayerGlassBackdrop
 import com.musicbox.app.ui.player.PlaybackUiState
@@ -56,9 +55,6 @@ fun LiquidGlassPlayerStyle(
     lyricTranslation: String = "",
 ) {
     val backdrop = rememberPlayerGlassBackdrop()
-    // 底部控制条玻璃的导出层：播放键采样它实现玻璃叠玻璃。
-    // 必须是独立实例，复用 backdrop 会让图层自我录制导致原生渲染线程崩溃。
-    val controlBarGlass = rememberPlayerGlassBackdrop()
 
     PlayerBackdrop(
         background = background,
@@ -97,6 +93,11 @@ fun LiquidGlassPlayerStyle(
                         foreground = Color.White,
                         onCollapse = actions.onCollapse,
                         onOpenQueue = actions.onOpenQueue,
+                        actions = {
+                            PlayerMoreMenu(
+                                foreground = Color.White,
+                            )
+                        },
                     )
                 }
 
@@ -118,9 +119,9 @@ fun LiquidGlassPlayerStyle(
                                 artworkUrl = state.artworkUrl,
                                 onArtworkLoaded = actions.onArtworkLoaded,
                                 modifier = Modifier.size(coverSize),
-                                shape = RoundedCornerShape(34.dp),
-                                haloColor = MaterialTheme.colorScheme.primary,
-                                elevation = 28.dp,
+                                shape = RoundedCornerShape(28.dp),
+                                showHalo = false,
+                                elevation = 0.dp,
                                 onClick = actions.onOpenLyric,
                             )
 
@@ -156,7 +157,6 @@ fun LiquidGlassPlayerStyle(
                         .fillMaxWidth(),
                     shape = RoundedCornerShape(32.dp),
                     tint = Color.White.copy(alpha = 0.12f),
-                    exportedBackdrop = controlBarGlass,
                 ) {
                     Column(
                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
@@ -183,11 +183,11 @@ fun LiquidGlassPlayerStyle(
                             foreground = Color.White,
                             playBackground = Color.Transparent,
                             playForeground = Color.White,
-                            playSize = 66.dp,
-                            playIconSize = 30.dp,
+                            playSize = 64.dp,
+                            playIconSize = 38.dp,
                             skipButtonSize = 48.dp,
                             skipIconSize = 28.dp,
-                            spacing = 20.dp,
+                            spacing = 24.dp,
                             leading = {
                                 ModeText(
                                     modeLabel = modeLabel,
@@ -203,40 +203,11 @@ fun LiquidGlassPlayerStyle(
                                     iconSize = 20.dp,
                                 )
                             },
-                            playContainer = { content ->
-                                // 采样父玻璃的导出层：玻璃叠玻璃，不重新采样整页背景
-                                GlassSurface(
-                                    backdrop = controlBarGlass,
-                                    modifier = Modifier.fillMaxSize(),
-                                    shape = CircleShape,
-                                    tint = Color.White.copy(alpha = 0.22f),
-                                    blurRadius = 4.dp,
-                                    shadow = false,
-                                ) {
-                                    Box(
-                                        modifier = Modifier.fillMaxSize(),
-                                        contentAlignment = Alignment.Center,
-                                    ) {
-                                        content()
-                                    }
-                                }
-                            },
+                            // 纯图标：不在播放键下面垫玻璃圆片
+                            playContainer = { content -> content() },
                         )
 
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        SecondaryActions(
-                            onOpenLyric = actions.onOpenLyric,
-                            onOpenQueue = actions.onOpenQueue,
-                            onOpenStyleSwitcher = actions.onOpenStyleSwitcher,
-                            onNotify = actions.onNotify,
-                            speed = state.speed,
-                            onSpeedChange = actions.onSetSpeed,
-                            foreground = Color.White.copy(alpha = 0.84f),
-                            iconSize = 18.dp,
-                            itemSize = 38.dp,
-                            spacing = 16.dp,
-                        )
+                        Spacer(modifier = Modifier.height(6.dp))
                     }
                 }
             }

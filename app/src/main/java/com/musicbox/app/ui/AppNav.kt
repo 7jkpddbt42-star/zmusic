@@ -61,7 +61,8 @@ fun BottomTabs(current: MainTab, onSelect: (MainTab) -> Unit, modifier: Modifier
                 backdrop = LocalGlassBackdrop.current,
                 shape = RoundedCornerShape(30.dp),
                 blurRadius = 6.dp,
-                tint = Color.White.copy(alpha = 0.08f),
+                // 与迷你条同一层玻璃：浅色页面底部也保持清晰的悬浮轮廓
+                tint = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.52f),
             ),
     ) {
         Row(

@@ -2,9 +2,12 @@ package com.musicbox.app.ui.settings
 
 import android.os.Build
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -20,6 +23,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -28,6 +32,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
@@ -44,6 +50,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -53,6 +60,7 @@ import com.musicbox.app.data.BackgroundSpec
 import com.musicbox.app.data.LyricStyle
 import com.musicbox.app.data.PlayerStyle
 import com.musicbox.app.player.SongDiskCache
+import com.musicbox.app.ui.components.MusicIcons
 import com.musicbox.app.ui.components.liquidglass.GlassAmbientBackdrop
 import com.musicbox.app.ui.components.liquidglass.glassBackdropSource
 import com.musicbox.app.ui.components.liquidglass.liquidGlass
@@ -178,7 +186,9 @@ fun SettingsScreen(
                         backdrop = backdrop,
                         shape = RoundedCornerShape(30.dp),
                         blurRadius = 6.dp,
-                        tint = Color.White.copy(alpha = 0.08f),
+                        // 设置页文字密集，面板比别处更实：既保留玻璃的边缘折射，
+                        // 又不会被背后的大图（尤其视频）透过来干扰阅读
+                        tint = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
                         // 整页大面板上色散几乎不可见，却是逐像素多采样的大头，
                         // 关掉后观感几乎不变、滚动明显更轻
                         dispersion = false,
@@ -187,10 +197,39 @@ fun SettingsScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .clip(RoundedCornerShape(30.dp))
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 18.dp, vertical = 14.dp),
+                    .clip(RoundedCornerShape(30.dp)),
             ) {
+                // 固定顶栏：设置项再长也能随时返回，不用滚到底部找返回
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 4.dp, end = 16.dp, top = 8.dp, bottom = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            imageVector = MusicIcons.ChevronLeft,
+                            contentDescription = "返回",
+                            modifier = Modifier.size(22.dp),
+                        )
+                    }
+                    Text(
+                        text = "设置",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+                HorizontalDivider(
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f),
+                    thickness = 1.dp,
+                )
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 18.dp, vertical = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(28.dp),
+                ) {
             SettingsGroup {
                 Text("外观", style = MaterialTheme.typography.titleMedium)
 
@@ -250,73 +289,62 @@ fun SettingsScreen(
                     )
                 }
 
-                if (themeSpec.separatePlayerTheme) {
-                    Text(
-                        "播放页取色来源",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 8.dp),
-                    )
-                    Row(modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
-                        ChoiceChip("封面", themeSpec.playerSeedSource == SeedSource.Cover) {
-                            onPlayerSeedSource(SeedSource.Cover)
+                AnimatedVisibility(
+                    visible = themeSpec.separatePlayerTheme,
+                    enter = expandVertically(
+                        animationSpec = tween(240, easing = FastOutSlowInEasing),
+                    ) + fadeIn(tween(200)),
+                    exit = shrinkVertically(
+                        animationSpec = tween(200, easing = FastOutSlowInEasing),
+                    ) + fadeOut(tween(140)),
+                ) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            "播放页取色来源",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 8.dp),
+                        )
+                        Row(modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
+                            ChoiceChip("封面", themeSpec.playerSeedSource == SeedSource.Cover) {
+                                onPlayerSeedSource(SeedSource.Cover)
+                            }
+                            ChoiceChip(
+                                label = "壁纸",
+                                selected = themeSpec.playerSeedSource == SeedSource.Wallpaper,
+                                enabled = WALLPAPER_AVAILABLE,
+                            ) { onPlayerSeedSource(SeedSource.Wallpaper) }
+                            ChoiceChip("固定色", themeSpec.playerSeedSource == SeedSource.Fixed) {
+                                onPlayerSeedSource(SeedSource.Fixed)
+                            }
                         }
-                        ChoiceChip(
-                            label = "壁纸",
-                            selected = themeSpec.playerSeedSource == SeedSource.Wallpaper,
-                            enabled = WALLPAPER_AVAILABLE,
-                        ) { onPlayerSeedSource(SeedSource.Wallpaper) }
-                        ChoiceChip("固定色", themeSpec.playerSeedSource == SeedSource.Fixed) {
-                            onPlayerSeedSource(SeedSource.Fixed)
-                        }
+                        Text(
+                            "播放页固定色",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 8.dp),
+                        )
+                        PaletteRow(
+                            selectedArgb = themeSpec.playerFixedSeedArgb,
+                            onSelect = onPlayerFixedSeedArgb,
+                            modifier = Modifier.padding(top = 4.dp),
+                        )
                     }
-                    Text(
-                        "播放页固定色",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 8.dp),
-                    )
-                    PaletteRow(
-                        selectedArgb = themeSpec.playerFixedSeedArgb,
-                        onSelect = onPlayerFixedSeedArgb,
-                        modifier = Modifier.padding(top = 4.dp),
-                    )
                 }
             }
 
-            HorizontalDivider(
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f),
-                modifier = Modifier.padding(vertical = 12.dp),
-            )
-
+            
             SettingsGroup {
                 Text("液态玻璃", style = MaterialTheme.typography.titleMedium)
-                Text(
-                    "基于官方库 Kyant0/Backdrop：折射主导、6dp 辅助模糊、8% 白色着色、边缘色散；" +
-                        "低版本系统自动降级为渐变伪玻璃。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 4.dp),
-                )
                 Button(
                     onClick = onOpenGlassDemo,
                     modifier = Modifier.padding(top = 8.dp),
                 ) { Text("打开纹理验收页") }
             }
 
-            HorizontalDivider(
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f),
-                modifier = Modifier.padding(vertical = 12.dp),
-            )
-
+            
             SettingsGroup {
                 Text("背景", style = MaterialTheme.typography.titleMedium)
-                Text(
-                    "仅支持本机素材（相册中的图片或视频），不提供官方素材库 / 在线 MV；选中的素材会复制到应用内保存。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 4.dp),
-                )
                 Text(
                     backgroundLabel,
                     style = MaterialTheme.typography.bodyMedium,
@@ -334,12 +362,6 @@ fun SettingsScreen(
                         }
                     }
                 }
-                Text(
-                    "模糊越小背景纹理越清晰；关闭后保留原图细节。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 4.dp),
-                )
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -352,11 +374,7 @@ fun SettingsScreen(
                 }
             }
 
-            HorizontalDivider(
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f),
-                modifier = Modifier.padding(vertical = 12.dp),
-            )
-
+            
             SettingsGroup {
                 Text("播放", style = MaterialTheme.typography.titleMedium)
                 Row(
@@ -366,21 +384,9 @@ fun SettingsScreen(
                     Text("智能过渡", modifier = Modifier.weight(1f))
                     Switch(checked = smartTransition, onCheckedChange = onSmartTransition)
                 }
-                Text(
-                    "切歌时先淡出再淡入，不再硬切。会分析曲首音频估算 BPM 与片头起点：" +
-                        "淡出 4 拍、淡入 2 拍，片头有静音时从真正出声的位置开始；" +
-                        "手动切换上一首 / 下一首同样生效。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 4.dp),
-                )
             }
 
-            HorizontalDivider(
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f),
-                modifier = Modifier.padding(vertical = 12.dp),
-            )
-
+            
             SettingsGroup {
                 Text("音效", style = MaterialTheme.typography.titleMedium)
                 Row(
@@ -390,19 +396,17 @@ fun SettingsScreen(
                     Text("均衡器", modifier = Modifier.weight(1f))
                     Switch(checked = audioFxEnabled, onCheckedChange = onAudioFxEnabled)
                 }
-                // 关闭时直接收起滑杆：淡入淡出，不留一块空壳
+                // 展开时同时做高度与透明度过渡：只淡入会让下方内容瞬间跳位
                 AnimatedVisibility(
                     visible = audioFxEnabled,
-                    enter = fadeIn(tween(220)),
-                    exit = fadeOut(tween(160)),
+                    enter = expandVertically(
+                        animationSpec = tween(240, easing = FastOutSlowInEasing),
+                    ) + fadeIn(tween(200)),
+                    exit = shrinkVertically(
+                        animationSpec = tween(200, easing = FastOutSlowInEasing),
+                    ) + fadeOut(tween(140)),
                 ) {
                     Column(modifier = Modifier.fillMaxWidth()) {
-                        Text(
-                            "低频 / 中低 / 中频 / 中高 / 高频五段增益，范围 ±6 dB，只作用于本应用播放的声音。",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(top = 4.dp),
-                        )
                         // 预设：一次把五段增益填好，仍可继续手动微调
                         Text(
                             "预设",
@@ -446,11 +450,7 @@ fun SettingsScreen(
                 }
             }
 
-            HorizontalDivider(
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f),
-                modifier = Modifier.padding(vertical = 12.dp),
-            )
-
+            
             SettingsGroup {
                 Text("歌词", style = MaterialTheme.typography.titleMedium)
 
@@ -463,12 +463,6 @@ fun SettingsScreen(
                     ChoiceChip("聚焦", lyricStyle == LyricStyle.Focus) { onLyricStyle(LyricStyle.Focus) }
                     ChoiceChip("经典", lyricStyle == LyricStyle.Classic) { onLyricStyle(LyricStyle.Classic) }
                 }
-                Text(
-                    "聚焦：当前行居中大字，其余行缩小淡出；经典：统一字号列表。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 4.dp),
-                )
 
                 Row(
                     modifier = Modifier.padding(top = 12.dp),
@@ -483,11 +477,7 @@ fun SettingsScreen(
                 }
             }
 
-            HorizontalDivider(
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f),
-                modifier = Modifier.padding(vertical = 12.dp),
-            )
-
+            
             SettingsGroup {
                 Text("播放页", style = MaterialTheme.typography.titleMedium)
                 Text(
@@ -506,33 +496,11 @@ fun SettingsScreen(
                         }
                     }
                 }
-                Text(
-                    text = playerStyle.description,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 4.dp),
-                )
-                Text(
-                    "切换立即生效，不会中断播放或丢失进度；也可以在播放页点「更多」快速切换。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 4.dp),
-                )
             }
 
-            HorizontalDivider(
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f),
-                modifier = Modifier.padding(vertical = 12.dp),
-            )
-
+            
             SettingsGroup {
                 Text("桌面歌词", style = MaterialTheme.typography.titleMedium)
-                Text(
-                    "在系统悬浮窗中显示当前歌词，可拖动到任意位置。首次开启需要授予「显示在其他应用上层」权限。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 4.dp),
-                )
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -563,11 +531,7 @@ fun SettingsScreen(
                 )
             }
 
-            HorizontalDivider(
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f),
-                modifier = Modifier.padding(vertical = 12.dp),
-            )
-
+            
             SettingsGroup {
                 Text("音源", style = MaterialTheme.typography.titleMedium)
                 Text(
@@ -583,13 +547,6 @@ fun SettingsScreen(
                     }
                 }
                 Text(
-                    "标准 128kbps / 较高 192kbps / 极高 320kbps。切歌时生效，" +
-                        "超出会员权限的曲目会自动降级到可用的最高档。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 4.dp),
-                )
-                Text(
                     "听歌模式",
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(top = 12.dp),
@@ -598,39 +555,11 @@ fun SettingsScreen(
                     ChoiceChip("普通模式", !freeSourceEnabled) { onFreeSourceEnabled(false) }
                     ChoiceChip("免费听歌模式", freeSourceEnabled) { onFreeSourceEnabled(true) }
                 }
-                Text(
-                    if (freeSourceEnabled) {
-                        "当前：免费听歌模式。官方只给试听片段时，会自动到公开的第三方接口换取完整地址" +
-                            "（音质通常 128kbps）；第三方地址并非官方授权，个别歌曲仍可能拿不到完整版。"
-                    } else {
-                        "当前：普通模式。只使用网易云官方音源，VIP / 付费歌曲仅提供试听片段。"
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 4.dp),
-                )
-                Text(
-                    "随时可切换，切换后当前歌曲会立即按新模式重新取流，进度会尽量保持；" +
-                        "若该曲在新模式下只有试听片段，超出部分无法继续。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 4.dp),
-                )
             }
 
-            HorizontalDivider(
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f),
-                modifier = Modifier.padding(vertical = 12.dp),
-            )
-
+            
             SettingsGroup {
                 Text("备用音源地址", style = MaterialTheme.typography.titleMedium)
-                Text(
-                    "默认留空。仅在端上签名路径临时失效时作为应急兜底，不参与正常流程。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 4.dp, bottom = 8.dp),
-                )
                 OutlinedTextField(
                     value = urlDraft,
                     onValueChange = { urlDraft = it },
@@ -644,20 +573,9 @@ fun SettingsScreen(
                 ) { Text("保存地址") }
             }
 
-            HorizontalDivider(
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f),
-                modifier = Modifier.padding(vertical = 12.dp),
-            )
-
+            
             SettingsGroup {
                 Text("缓存", style = MaterialTheme.typography.titleMedium)
-                Text(
-                    "听过的歌会自动存到本机（最多 256MB，超出后淘汰最久未听的），" +
-                        "下次再听不用重新拉流；断网时已缓存的歌仍可播放。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 4.dp),
-                )
 
                 Text("歌词缓存：$lyricCacheCount 首", modifier = Modifier.padding(top = 12.dp))
                 Button(onClick = onClearLyricCache, modifier = Modifier.padding(top = 8.dp)) {
@@ -673,25 +591,13 @@ fun SettingsScreen(
                 }
             }
 
-            HorizontalDivider(
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f),
-                modifier = Modifier.padding(vertical = 12.dp),
-            )
-
+            
             SettingsGroup {
                 Text("备份与恢复", style = MaterialTheme.typography.titleMedium)
                 Text(
-                    "把本机收藏与最近播放导出成一个 JSON 文件，换机或重装后可恢复；" +
-                        "恢复只做合并不覆盖，不会清掉现有数据。网易云歌单本身在云端，登录即同步。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 4.dp),
-                )
-                Text(
                     "本机收藏 $backupLikedCount 首 · 播放记录 $backupHistoryCount 条",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 8.dp),
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(top = 12.dp),
                 )
                 Row(
                     modifier = Modifier.padding(top = 8.dp),
@@ -703,28 +609,19 @@ fun SettingsScreen(
                 }
             }
 
-            HorizontalDivider(
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f),
-                modifier = Modifier.padding(vertical = 12.dp),
-            )
-
+            
             SettingsGroup {
                 Text("错误日志", style = MaterialTheme.typography.titleMedium)
-                Text(
-                    "签名 / 解析异常等本地技术日志，仅用于排查，不影响使用。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Row {
+                Row(modifier = Modifier.padding(top = 8.dp)) {
                     TextButton(onClick = { showLog = true }) { Text("查看") }
                     TextButton(onClick = onClearLog) { Text("清空") }
                 }
             }
 
-            TextButton(onClick = onBack, modifier = Modifier.padding(top = 24.dp)) { Text("返回") }
+            }
+                }
             }
         }
-    }
 
     if (showLog) {
         AlertDialog(

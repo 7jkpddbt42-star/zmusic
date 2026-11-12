@@ -49,7 +49,7 @@ import com.musicbox.app.ui.components.player.PlayerArtwork
 import com.musicbox.app.ui.components.player.PlayerBackdrop
 import com.musicbox.app.ui.components.player.ProgressSection
 import com.musicbox.app.ui.components.player.ProgressTimePlacement
-import com.musicbox.app.ui.components.player.SecondaryActions
+import com.musicbox.app.ui.components.player.PlayerMoreMenu
 import com.musicbox.app.ui.components.player.TransportControls
 import com.musicbox.app.ui.player.PlaybackUiState
 import com.musicbox.app.ui.player.QueueItem
@@ -105,6 +105,11 @@ fun SplitViewPlayerStyle(
                         foreground = Color.White,
                         onCollapse = actions.onCollapse,
                         onOpenQueue = actions.onOpenQueue,
+                        actions = {
+                            PlayerMoreMenu(
+                                foreground = Color.White,
+                            )
+                        },
                     )
 
                     Row(
@@ -177,27 +182,6 @@ fun SplitViewPlayerStyle(
                         skipButtonSize = 48.dp,
                         skipIconSize = 28.dp,
                     )
-
-                    Spacer(modifier = Modifier.height(6.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.Center,
-                    ) {
-                        SecondaryActions(
-                            onOpenLyric = actions.onOpenLyric,
-                            onOpenQueue = actions.onOpenQueue,
-                            onOpenStyleSwitcher = actions.onOpenStyleSwitcher,
-                            onNotify = actions.onNotify,
-                            speed = state.speed,
-                            onSpeedChange = actions.onSetSpeed,
-                            foreground = Color.White.copy(alpha = 0.80f),
-                            iconSize = 17.dp,
-                            itemSize = 36.dp,
-                            spacing = 12.dp,
-                            showSpeed = false,
-                        )
-                    }
 
                     Spacer(modifier = Modifier.height(10.dp))
                 }

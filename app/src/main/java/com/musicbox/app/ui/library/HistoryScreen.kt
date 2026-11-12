@@ -4,6 +4,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -41,7 +43,7 @@ fun HistoryScreen(
     Column(modifier = modifier.fillMaxSize().padding(horizontal = 16.dp)) {
         PageHeader(
             title = "最近播放",
-            subtitle = if (songs.isEmpty()) "播放过的歌会自动记录" else "${songs.size} 首 · 按播放时间排序",
+            subtitle = if (songs.isEmpty()) null else "${songs.size} 首",
             leading = if (onBack == null) null else {
                 { GlassBackButton(onClick = onBack) }
             },
@@ -77,7 +79,11 @@ fun HistoryScreen(
             }
         } else {
             GlassListPanel(
-                modifier = Modifier.fillMaxSize().padding(bottom = 8.dp),
+                // 短列表让面板贴住内容收口（+8dp 是面板与底部浮层的间距）
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = songListPanelHeight(songs.size) + 8.dp)
+                    .padding(bottom = 8.dp),
                 shape = RoundedCornerShape(26.dp),
             ) {
                 itemsIndexed(songs, key = { index, song -> "$index-${song.id}" }) { _, song ->

@@ -186,26 +186,19 @@ fun GlassEmptyState(
 ) {
     GlassPanel(modifier = modifier.fillMaxWidth()) {
         Column(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 28.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Box(
-                modifier = Modifier
-                    .size(56.dp)
-                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f), CircleShape),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(26.dp),
-                )
-            }
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(28.dp),
+            )
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.padding(top = 14.dp),
+                modifier = Modifier.padding(top = 10.dp),
                 textAlign = TextAlign.Center,
             )
             Text(

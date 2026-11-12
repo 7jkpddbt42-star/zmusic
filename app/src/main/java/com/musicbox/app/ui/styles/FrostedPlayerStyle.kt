@@ -26,7 +26,7 @@ import com.musicbox.app.ui.components.player.PlayerArtwork
 import com.musicbox.app.ui.components.player.PlayerBackdrop
 import com.musicbox.app.ui.components.player.ProgressSection
 import com.musicbox.app.ui.components.player.ProgressTimePlacement
-import com.musicbox.app.ui.components.player.SecondaryActions
+import com.musicbox.app.ui.components.player.PlayerMoreMenu
 import com.musicbox.app.ui.components.player.TransportControls
 import com.musicbox.app.ui.components.player.rememberPlayerGlassBackdrop
 import com.musicbox.app.ui.player.PlaybackUiState
@@ -73,6 +73,11 @@ fun FrostedPlayerStyle(
                 foreground = Color.White,
                 onCollapse = actions.onCollapse,
                 onOpenQueue = actions.onOpenQueue,
+                actions = {
+                    PlayerMoreMenu(
+                        foreground = Color.White,
+                    )
+                },
             )
 
             Box(
@@ -166,22 +171,6 @@ fun FrostedPlayerStyle(
                                     foreground = Color.White.copy(alpha = 0.74f),
                                 )
                             },
-                        )
-
-                        Spacer(modifier = Modifier.height(4.dp))
-
-                        SecondaryActions(
-                            onOpenLyric = actions.onOpenLyric,
-                            onOpenQueue = actions.onOpenQueue,
-                            onOpenStyleSwitcher = actions.onOpenStyleSwitcher,
-                            onNotify = actions.onNotify,
-                            speed = state.speed,
-                            onSpeedChange = actions.onSetSpeed,
-                            foreground = Color.White.copy(alpha = 0.84f),
-                            iconSize = 18.dp,
-                            itemSize = 38.dp,
-                            spacing = 12.dp,
-                            showSpeed = false,
                         )
                     }
                 }

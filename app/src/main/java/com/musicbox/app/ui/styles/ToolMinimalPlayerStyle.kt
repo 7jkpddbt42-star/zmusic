@@ -31,7 +31,7 @@ import com.musicbox.app.ui.components.player.MediaHeader
 import com.musicbox.app.ui.components.player.PlayerBackdrop
 import com.musicbox.app.ui.components.player.ProgressSection
 import com.musicbox.app.ui.components.player.ProgressTimePlacement
-import com.musicbox.app.ui.components.player.SecondaryActions
+import com.musicbox.app.ui.components.player.PlayerMoreMenu
 import com.musicbox.app.ui.components.player.TransportControls
 import com.musicbox.app.ui.components.player.formatProgressTime
 import com.musicbox.app.ui.player.PlaybackUiState
@@ -84,6 +84,11 @@ fun ToolMinimalPlayerStyle(
                 onCollapse = actions.onCollapse,
                 onOpenQueue = actions.onOpenQueue,
                 title = "播放器",
+                actions = {
+                    PlayerMoreMenu(
+                        foreground = ToolFg,
+                    )
+                },
             )
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -208,22 +213,6 @@ fun ToolMinimalPlayerStyle(
                         foreground = ToolMuted,
                     )
                 },
-            )
-
-            Spacer(modifier = Modifier.height(6.dp))
-
-            SecondaryActions(
-                onOpenLyric = actions.onOpenLyric,
-                onOpenQueue = actions.onOpenQueue,
-                onOpenStyleSwitcher = actions.onOpenStyleSwitcher,
-                onNotify = actions.onNotify,
-                speed = state.speed,
-                onSpeedChange = actions.onSetSpeed,
-                foreground = ToolMuted,
-                iconSize = 17.dp,
-                itemSize = 44.dp,
-                spacing = 10.dp,
-                showLabels = true,
             )
 
             Spacer(modifier = Modifier.height(8.dp))

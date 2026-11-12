@@ -34,7 +34,7 @@ fun AllPlaylistsScreen(
     Column(modifier = modifier.fillMaxSize().padding(horizontal = 16.dp)) {
         PageHeader(
             title = "我的歌单",
-            subtitle = if (playlists.isEmpty()) "还没有创建歌单" else "${playlists.size} 个歌单",
+            subtitle = if (playlists.isEmpty()) null else "${playlists.size} 个歌单",
             leading = { GlassBackButton(onClick = onBack) },
         )
         if (playlists.isEmpty()) {

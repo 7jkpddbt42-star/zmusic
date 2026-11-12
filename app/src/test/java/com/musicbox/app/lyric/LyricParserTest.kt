@@ -22,17 +22,11 @@ class LyricParserTest {
     fun `parses mixed json and yrc lines into per word timeline`() {
         val timeline = LyricParser.parse(LyricData(yrc = yrcSample, lrc = null, translation = null, romaji = null))
 
-        assertEquals(3, timeline.lines.size)
+        // 两行 JSON credits 不是歌词，解析时被过滤，只剩逐字行
+        assertEquals(1, timeline.lines.size)
 
-        // 前两行是 JSON credits：有时间、整行文本、无逐字
-        assertEquals(0L, timeline.lines[0].startMs)
-        assertEquals("作曲: 周杰伦", timeline.lines[0].text)
-        assertTrue(timeline.lines[0].words.isEmpty())
-        assertEquals(1000L, timeline.lines[1].startMs)
-        assertEquals("作词: 周杰伦", timeline.lines[1].text)
-
-        // 第三行是 YRC：有逐字
-        val sung = timeline.lines[2]
+        // 剩下的是 YRC 逐字行
+        val sung = timeline.lines[0]
         assertEquals(24_080L, sung.startMs)
         assertEquals(5_080L, sung.durationMs)
         assertEquals("半夜睡不着觉", sung.text)
@@ -152,6 +146,32 @@ class LyricParserTest {
         assertEquals("你好", timeline.lines[0].text)
         assertEquals(2, timeline.lines[0].words.size)
         assertEquals(300L, timeline.lines[0].words[0].durationMs)
+    }
+
+    @Test
+    fun `filters instrument and compound credit lines`() {
+        // 实测：制作名单会混进带时间戳的正文（笛子/混音&母带 这两种复合写法都是真实样本）
+        val text = "[00:01.000] 笛子：囚牛\n" +
+            "[00:02.000] 混音&母带：周天澈@Studio21A\n" +
+            "[00:02.500] 人声编辑：梨甜\n" +
+            "[00:03.000] 他说：别走\n" +
+            "[00:04.000] 我恨明月高悬"
+        val timeline = LyricParser.parse(LyricData(yrc = null, lrc = text, translation = null, romaji = null))
+
+        // 前两行是制作信息；"他说：别走" 是歌词，不能误杀
+        assertEquals(2, timeline.lines.size)
+        assertEquals("他说：别走", timeline.lines[0].text)
+        assertEquals("我恨明月高悬", timeline.lines[1].text)
+    }
+
+    @Test
+    fun `filters netease copyright boilerplate`() {
+        // 实测：部分歌曲把版权声明当成第一行歌词下发，没有冒号
+        val text = "[00:00.000] 【未经著作权人许可不得翻唱翻录或使用】\n[00:01.000] 正文歌词"
+        val timeline = LyricParser.parse(LyricData(yrc = null, lrc = text, translation = null, romaji = null))
+
+        assertEquals(1, timeline.lines.size)
+        assertEquals("正文歌词", timeline.lines[0].text)
     }
 
     @Test

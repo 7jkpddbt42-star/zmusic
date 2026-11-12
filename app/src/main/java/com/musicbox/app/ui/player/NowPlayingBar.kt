@@ -3,7 +3,11 @@ package com.musicbox.app.ui.player
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -67,7 +71,9 @@ internal fun NowPlayingBar(
                 backdrop = LocalGlassBackdrop.current,
                 shape = RoundedCornerShape(24.dp),
                 blurRadius = 6.dp,
-                tint = Color.White.copy(alpha = 0.08f),
+                // 纯白 8% 在浅色页面底部会完全融进背景，条子看起来像悬空的文字。
+                // 用带一点紫灰的 surfaceVariant 做底，任何背景上都有一层可辨认的玻璃。
+                tint = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.52f),
                 interactionSource = interactionSource,
             ),
     ) {
@@ -107,10 +113,22 @@ internal fun NowPlayingBar(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    // 当前歌词行：始终占据一行高度，随行变化淡入淡出，避免迷你条抖动
+                    // 当前歌词行：始终占据一行高度，随行变化上下滚动淡入淡出，避免迷你条抖动
                     AnimatedContent(
                         targetState = lyricLine,
-                        transitionSpec = { fadeIn() togetherWith fadeOut() },
+                        transitionSpec = {
+                            (
+                                slideInVertically(
+                                    animationSpec = tween(260, easing = FastOutSlowInEasing),
+                                    initialOffsetY = { height -> height },
+                                ) + fadeIn(tween(200))
+                                ) togetherWith (
+                                slideOutVertically(
+                                    animationSpec = tween(260, easing = FastOutSlowInEasing),
+                                    targetOffsetY = { height -> -height },
+                                ) + fadeOut(tween(160))
+                                )
+                        },
                         contentAlignment = Alignment.CenterStart,
                         label = "miniLyric",
                         modifier = Modifier.fillMaxWidth(),
