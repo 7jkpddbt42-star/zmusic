@@ -50,7 +50,8 @@ class SettingsRepositoryTest {
     fun `theme spec defaults match theme spec`() {
         val repo = SettingsRepository(InMemoryKeyValueStore())
         val spec = repo.themeSpec.value
-        assertEquals(ThemeMode.System, spec.mode)
+        // 未设置过主题时跟随 ThemeSpec 的默认模式（冷调深色）
+        assertEquals(ThemeSpec().mode, spec.mode)
         assertEquals(SeedSource.Cover, spec.seedSource)
         assertEquals(ThemeSpec.DEFAULT_SEED_ARGB, spec.fixedSeedArgb)
         assertEquals(false, spec.separatePlayerTheme)

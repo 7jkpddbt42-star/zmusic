@@ -135,7 +135,7 @@ internal fun QueueSheet(
     // 遮罩随抽屉一起过渡：进场 340ms、退场 260ms，与抽屉滑出同帧结束，
     // 避免抽屉已滑走、遮罩还剩一点暗色导致关闭瞬间闪一下。
     val scrimAlpha by animateFloatAsState(
-        targetValue = if (shown) 0.50f else 0f,
+        targetValue = if (shown) 0.58f else 0f,
         animationSpec = tween(if (shown) QUEUE_SLIDE_IN_MS else QUEUE_SLIDE_OUT_MS),
         label = "queueScrim",
     )

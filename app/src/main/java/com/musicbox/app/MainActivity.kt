@@ -70,6 +70,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -171,15 +173,21 @@ private fun readBackupText(input: java.io.InputStream): String? {
     return out.toString(Charsets.UTF_8.name())
 }
 
-/** 按来源解析当前生效的主题 seed。壁纸取色在低版本/取色失败时返回 null。 */
+/**
+ * 按来源解析当前生效的主题 seed。壁纸取色在低版本/取色失败时返回 null。
+ *
+ * 封面尚未取到色时不要返回 null：null 会让 [com.musicbox.app.ui.theme.buildScheme]
+ * 退回 Material3 默认的紫白配色，与应用的冷调底色完全冲突。此时用默认冷色种子，
+ * 等封面取色到位再平滑切过去。
+ */
 private fun resolveSeed(
     source: SeedSource,
     fixedArgb: Int,
     coverSeed: Color?,
     container: AppContainer,
 ): Color? = when (source) {
-    SeedSource.Cover -> coverSeed
-    SeedSource.Wallpaper -> container.wallpaperSeed()
+    SeedSource.Cover -> coverSeed ?: Color(ThemeSpec.DEFAULT_SEED_ARGB)
+    SeedSource.Wallpaper -> container.wallpaperSeed() ?: Color(ThemeSpec.DEFAULT_SEED_ARGB)
     SeedSource.Fixed -> Color(fixedArgb)
 }
 
@@ -592,8 +600,9 @@ private fun MusicBoxApp(
     }
 
     // 状态栏/导航栏图标：浅色主题用深色图标；播放页/歌词页/验收页背景始终压暗，固定用浅色图标
-    val darkSystemSurface = MaterialTheme.colorScheme.surface.luminance() < 0.5f
-    SystemBarsIcons(lightIcons = darkSystemSurface || showPlayer || showLyric || showGlassDemo)
+    val darkSurface = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    val darkSystemSurface = darkSurface || showPlayer || showLyric || showGlassDemo
+    SystemBarsIcons(lightIcons = darkSystemSurface)
 
     CompositionLocalProvider(
         LocalGlassBackdrop provides shellBackdrop,
@@ -607,26 +616,74 @@ private fun MusicBoxApp(
                     GlassAmbientBackdrop(
                         background = backgroundSpec,
                         artworkUrl = playState.artworkUrl,
-                        // 遮罩只负责压住封面细节，页底色另叠一层（见下方 0.36），
-                        // 两层合计约五成白，既保留封面的色彩氛围又不影响正文阅读
-                        scrim = MaterialTheme.colorScheme.surface.copy(alpha = 0.28f),
+                        // 遮罩负责压住封面细节并定色温：只压暗不改色的话，
+                        // 暖色封面会把整页烘暖，冷调就不成立了。
+                        scrim = if (darkSurface) {
+                            // 夜里不叠冷白，用更重的黑把封面压成"隐约一块颜色"，
+                            // 浅色封面才不会把深色页面洗成灰
+                            Color.Black.copy(alpha = 0.66f)
+                        } else {
+                            MaterialTheme.colorScheme.surface.copy(alpha = 0.40f)
+                        },
                         modifier = Modifier.fillMaxSize(),
                     )
+                    // 冷调罩：很淡的一层主色蓝，把任何封面都拉回同一个色温。
+                    // 画在背景源内部，玻璃采样到的也是这份冷调背景。
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(
+                                MaterialTheme.colorScheme.primary
+                                    .copy(alpha = if (darkSurface) 0.07f else 0.10f),
+                            ),
+                    )
+
+                    // 冷光晕：暗场里从上方压下来的一团冷光。
+                    // 纯色底再高级也是"平"的，一点柔和的光才让画面有空气感。
+                    if (darkSurface) {
+                        val glow = MaterialTheme.colorScheme.primary
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .drawBehind {
+                                    val radius = size.width * 0.95f
+                                    val center = Offset(size.width / 2f, size.height * 0.08f)
+                                    drawCircle(
+                                        brush = Brush.radialGradient(
+                                            colors = listOf(glow.copy(alpha = 0.12f), Color.Transparent),
+                                            center = center,
+                                            radius = radius,
+                                        ),
+                                        radius = radius,
+                                        center = center,
+                                    )
+                                },
+                        )
+                    }
                 }
                 // 页内玻璃采样页面级背景源；底部浮层仍采样壳层背景源
                 CompositionLocalProvider(LocalGlassBackdrop provides pageBackdrop) {
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            // 页面底色做成纵向渐变：顶部留更多封面色彩，视线进入内容后
-                            // 逐步过渡到接近纸面的浅色。均匀半透明会把深色封面压成一整片
-                            // 灰蒙层，渐变则像光从顶部漏进页面，列表区始终干净好读。
+                            // 页面底色：浅色是"上下压冷蓝、中段雾面纸"；
+                            // 深色只留顶部一线冷光，其余交给暗场——夜里不该有一块亮纸。
                             .background(
-                                Brush.verticalGradient(
-                                    0f to MaterialTheme.colorScheme.surface.copy(alpha = 0.30f),
-                                    0.42f to MaterialTheme.colorScheme.surface.copy(alpha = 0.62f),
-                                    1f to MaterialTheme.colorScheme.surface.copy(alpha = 0.80f),
-                                ),
+                                if (darkSurface) {
+                                    Brush.verticalGradient(
+                                        0f to MaterialTheme.colorScheme.primary.copy(alpha = 0.10f),
+                                        0.30f to Color.Transparent,
+                                        0.72f to Color.Black.copy(alpha = 0.18f),
+                                        1f to Color.Black.copy(alpha = 0.34f),
+                                    )
+                                } else {
+                                    Brush.verticalGradient(
+                                        0f to MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
+                                        0.30f to MaterialTheme.colorScheme.surface.copy(alpha = 0.56f),
+                                        0.70f to MaterialTheme.colorScheme.surface.copy(alpha = 0.82f),
+                                        1f to MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
+                                    )
+                                },
                             )
                             .windowInsetsPadding(
                                 WindowInsets.safeDrawing.only(

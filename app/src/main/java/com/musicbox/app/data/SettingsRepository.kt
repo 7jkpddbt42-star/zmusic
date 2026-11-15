@@ -324,7 +324,9 @@ class SettingsRepository(private val store: KeyValueStore) {
     )
 
     private fun readThemeSpec(): ThemeSpec = ThemeSpec(
-        mode = ThemeMode.fromKey(store.getString(KEY_THEME_MODE)),
+        // 未设置过主题时跟随 ThemeSpec 的默认模式（冷调深色），
+        // 而不是 fromKey 的兜底 System——后者会让默认观感随系统浅色跑掉。
+        mode = store.getString(KEY_THEME_MODE)?.let(ThemeMode::fromKey) ?: ThemeSpec().mode,
         seedSource = SeedSource.fromKey(store.getString(KEY_SEED_SOURCE)),
         fixedSeedArgb = store.getInt(KEY_FIXED_SEED, ThemeSpec.DEFAULT_SEED_ARGB),
         separatePlayerTheme = store.getBoolean(KEY_SEPARATE_PLAYER, false),

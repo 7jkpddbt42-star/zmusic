@@ -44,6 +44,17 @@ class SeedSchemeTest {
     }
 
     @Test
+    fun `warm seed still yields cool tinted surfaces`() {
+        // 冷调改造的核心约束：封面再暖，页面底色与强调色也必须偏蓝，
+        // 否则整个界面会随封面回到暖色，冷调就不成立。
+        listOf(true, false).forEach { dark ->
+            val scheme = buildScheme(Color(0xFFE5484D.toInt()), dark = dark)
+            assertTrue("surface 偏暖 (dark=$dark)", scheme.surface.blue > scheme.surface.red)
+            assertTrue("primary 偏暖 (dark=$dark)", scheme.primary.blue > scheme.primary.red)
+        }
+    }
+
+    @Test
     fun `adjustForContrast brightens a dark color on dark theme`() {
         val color = Color(0xFF333333.toInt())
         val before = perceivedLuminance(color)
@@ -87,7 +98,8 @@ class SeedSchemeTest {
     @Test
     fun `theme spec defaults`() {
         val spec = ThemeSpec()
-        assertEquals(ThemeMode.System, spec.mode)
+        // 默认观感是冷调深色，不随系统浅色跑掉
+        assertEquals(ThemeMode.Dark, spec.mode)
         assertEquals(SeedSource.Cover, spec.seedSource)
         assertEquals(ThemeSpec.DEFAULT_SEED_ARGB, spec.fixedSeedArgb)
         assertEquals(false, spec.separatePlayerTheme)

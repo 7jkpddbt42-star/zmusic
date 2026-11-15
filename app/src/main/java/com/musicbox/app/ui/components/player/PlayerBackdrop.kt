@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.Modifier
@@ -79,6 +80,14 @@ fun PlayerBackdrop(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(Color.Black.copy(alpha = scrim.coerceIn(0f, 1f))),
+            )
+
+            // 冷调压暗：纯黑只降亮度、不改色温，暖色封面依旧会把整页烘成暖调。
+            // 叠一层很淡的主色蓝，让所有封面在播放页都回到同一种"夜色"。
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
             )
 
             if (gradient) {

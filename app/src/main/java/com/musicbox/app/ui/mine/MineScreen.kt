@@ -176,7 +176,7 @@ private fun LoginCard(onLogin: () -> Unit) {
             .fillMaxWidth()
             .padding(horizontal = 16.dp),
         shape = RoundedCornerShape(22.dp),
-        tint = MaterialTheme.colorScheme.surface.copy(alpha = 0.62f),
+        tint = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.62f),
     ) {
         Column(modifier = Modifier.fillMaxWidth().padding(18.dp)) {
             Text(

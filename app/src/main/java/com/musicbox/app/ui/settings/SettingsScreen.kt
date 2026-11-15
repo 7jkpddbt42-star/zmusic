@@ -71,16 +71,18 @@ import com.musicbox.app.ui.theme.ThemeSpec
 import java.util.Locale
 import kotlin.math.roundToInt
 
-/** 固定色色板预设（8 个）：覆盖紫/蓝/青/绿/橙/红/粉/灰。 */
+/** 固定色色板预设（8 个）：一组冷灰蓝到墨蓝的色阶。
+ *  主题本身会把所有种子冷化，这里若仍摆彩虹色，用户点了紫色却得到蓝灰会困惑，
+ *  所以预设直接收在冷色范围内，只体现深浅与冷暖的细微差别。 */
 private val PRESET_COLORS: List<Int> = listOf(
-    0xFF7C5CFF.toInt(),
-    0xFF3D7BFF.toInt(),
-    0xFF00B4A0.toInt(),
-    0xFF3BA55D.toInt(),
-    0xFFE58A00.toInt(),
-    0xFFE5484D.toInt(),
-    0xFFD6409F.toInt(),
-    0xFF6B7280.toInt(),
+    0xFF8FA9C2.toInt(),
+    0xFF7B96B2.toInt(),
+    0xFF6E8CA8.toInt(),
+    0xFF5F7F8C.toInt(),
+    0xFF566F87.toInt(),
+    0xFF4C6478.toInt(),
+    0xFF3F566E.toInt(),
+    0xFF6B7A88.toInt(),
 )
 
 /** 桌面歌词可选颜色：白 / 黄 / 青 / 淡粉，均保证深色胶囊上的可读性。 */

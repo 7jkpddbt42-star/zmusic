@@ -147,7 +147,7 @@ private fun SearchBarRow(
                 .height(38.dp)
                 .clip(RoundedCornerShape(19.dp))
                 // 与首页搜索栏同一套底色：浅色胶囊 + 极细描边，在彩色背景上边界清晰
-                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.58f))
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.58f))
                 .border(
                     width = 0.5.dp,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.07f),
@@ -332,7 +332,7 @@ private fun KeywordChip(
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(16.dp))
-            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.50f))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.50f))
             .border(
                 width = 0.5.dp,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f),

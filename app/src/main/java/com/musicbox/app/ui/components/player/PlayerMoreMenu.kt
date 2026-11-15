@@ -132,7 +132,7 @@ fun PlayerMoreSheet(
 
     // 遮罩与面板同时进场、同时结束，收起瞬间不会留下一点暗色
     val scrimAlpha by animateFloatAsState(
-        targetValue = if (shown) 0.50f else 0f,
+        targetValue = if (shown) 0.58f else 0f,
         animationSpec = tween(if (shown) MORE_SLIDE_IN_MS else MORE_SLIDE_OUT_MS),
         label = "moreScrim",
     )

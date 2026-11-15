@@ -86,7 +86,7 @@ fun StyleSwitcher(
 
     // 遮罩与面板同步过渡，收起结束时遮罩也刚好归零，不会留下一点暗色残余
     val scrimAlpha by animateFloatAsState(
-        targetValue = if (shown) 0.50f else 0f,
+        targetValue = if (shown) 0.58f else 0f,
         animationSpec = tween(if (shown) STYLE_SLIDE_IN_MS else STYLE_SLIDE_OUT_MS.toInt()),
         label = "styleScrim",
     )

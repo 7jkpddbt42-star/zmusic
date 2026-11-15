@@ -90,14 +90,16 @@ fun HomeScreen(
                     Text(
                         text = "发现",
                         fontSize = 24.sp,
-                        fontWeight = FontWeight.Bold,
+                        fontWeight = FontWeight.SemiBold,
+                        // 中文标题留一点字距：字与字之间透气，比加粗更显从容
+                        letterSpacing = 0.4.sp,
                         color = MaterialTheme.colorScheme.onSurface,
                     )
                     Spacer(modifier = Modifier.weight(1f))
                     // 胶囊底色比正文深一层：在彩色封面背景上也能一眼找到这个操作
                     GlassPill(
                         onClick = onRefresh,
-                        tint = MaterialTheme.colorScheme.surface.copy(alpha = 0.52f),
+                        tint = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
                     ) {
                         if (state.loading) {
                             CircularProgressIndicator(
@@ -226,8 +228,9 @@ private fun SearchBar(onClick: () -> Unit) {
             .fillMaxWidth()
             .height(40.dp)
             .clip(RoundedCornerShape(20.dp))
-            // 浅色半透明底 + 一道极细描边：在灰调背景上仍有清晰的形状边界
-            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.58f))
+            // 半透明底 + 一道极细描边：在背景上仍有清晰的形状边界。
+            // 用 surfaceVariant 而不是 surface：深色主题下底与卡片要差一档才看得见。
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.58f))
             .border(
                 width = 0.5.dp,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.07f),
