@@ -1,12 +1,11 @@
 package com.musicbox.app.ui.components.player
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -62,13 +61,13 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
-/** 面板滑入时长，与队列抽屉一致。 */
-private const val MORE_SLIDE_IN_MS = 340
+/** 面板淡入时长，与队列抽屉一致。 */
+private const val MORE_FADE_IN_MS = 220
 
 /** 面板收起时长：比进场略快，和队列抽屉一致。 */
-private const val MORE_SLIDE_OUT_MS = 260
+private const val MORE_FADE_OUT_MS = 180
 
-/** 打开前的预热帧数：先让背景源录几帧，玻璃滑入的第一帧就有折射。 */
+/** 打开前的预热帧数：先让背景源录几帧，玻璃淡入的第一帧就有折射。 */
 private const val MORE_BACKDROP_WARMUP_FRAMES = 2
 
 /** 当前歌曲的下载入口：[state] 来自 [com.musicbox.app.player.DownloadStates]，[onClick] 开始 / 取消下载。 */
@@ -107,7 +106,7 @@ fun PlayerMoreMenu(
 /**
  * 「更多」面板：下载、倍速、播放页样式。
  *
- * 与队列抽屉同一种液态玻璃底部面板：自下而上滑入、点击遮罩收起，
+ * 与队列抽屉同一种液态玻璃底部面板：原地淡入、点击遮罩收起，
  * 打开前空跑两帧让背景源完成首帧录制，玻璃进场的第一帧就有真实折射。
  */
 @Composable
@@ -133,7 +132,7 @@ fun PlayerMoreSheet(
     // 遮罩与面板同时进场、同时结束，收起瞬间不会留下一点暗色
     val scrimAlpha by animateFloatAsState(
         targetValue = if (shown) 0.58f else 0f,
-        animationSpec = tween(if (shown) MORE_SLIDE_IN_MS else MORE_SLIDE_OUT_MS),
+        animationSpec = tween(if (shown) MORE_FADE_IN_MS else MORE_FADE_OUT_MS),
         label = "moreScrim",
     )
 
@@ -142,14 +141,14 @@ fun PlayerMoreSheet(
         shown = true
     }
 
-    // 先播收起动画，再关闭窗口；需要接着做的事（下载、换风格）等面板落下后再执行，
+    // 先播收起动画，再关闭窗口；需要接着做的事（下载、换风格）等面板消失后再执行，
     // 避免两个窗口叠在一起闪一下。
     val requestClose: (() -> Unit) -> Unit = { action ->
         if (!closing) {
             closing = true
             scope.launch {
                 shown = false
-                delay(MORE_SLIDE_OUT_MS.toLong())
+                delay(MORE_FADE_OUT_MS.toLong())
                 onDismiss()
                 action()
             }
@@ -175,14 +174,8 @@ fun PlayerMoreSheet(
 
             AnimatedVisibility(
                 visible = shown,
-                enter = slideInVertically(
-                    initialOffsetY = { height -> height },
-                    animationSpec = tween(MORE_SLIDE_IN_MS, easing = FastOutSlowInEasing),
-                ),
-                exit = slideOutVertically(
-                    targetOffsetY = { height -> height },
-                    animationSpec = tween(MORE_SLIDE_OUT_MS, easing = FastOutLinearInEasing),
-                ),
+                enter = fadeIn(tween(MORE_FADE_IN_MS, easing = FastOutSlowInEasing)),
+                exit = fadeOut(tween(MORE_FADE_OUT_MS, easing = FastOutSlowInEasing)),
                 modifier = Modifier.fillMaxSize(),
             ) {
                 Box(modifier = Modifier.fillMaxSize()) {

@@ -1,12 +1,11 @@
 package com.musicbox.app.ui.components.player
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -54,16 +53,16 @@ import com.musicbox.app.ui.components.liquidglass.rememberGlassBackdrop
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-/** 面板滑入：与队列/更多抽屉同一节奏，三处底部面板手感一致。 */
-private const val STYLE_SLIDE_IN_MS = 340
+/** 面板淡入：与队列/更多抽屉同一节奏，三处底部面板手感一致。 */
+private const val STYLE_FADE_IN_MS = 220
 
-/** 面板滑出：比进场略快，结束后才真正关闭 Dialog。 */
-private const val STYLE_SLIDE_OUT_MS = 260L
+/** 面板淡出：比进场略快，结束后才真正关闭 Dialog。 */
+private const val STYLE_FADE_OUT_MS = 180L
 
 /**
- * 播放页风格切换面板（底部浮层，自下而上滑入）。
+ * 播放页风格切换面板（底部浮层，原地淡入）。
  *
- * 与队列/更多面板统一为液态玻璃和同一套进出场：Dialog 窗口内自建真实背景源
+ * 与队列/更多面板统一为液态玻璃和同一套淡入淡出：Dialog 窗口内自建真实背景源
  * （封面/图片/视频），底部面板采样这层背景，模糊与折射可见。点击某项立即回调
  * [onSelect]，由上层写入 SettingsRepository 并触发重组；不重建 Activity、不打断播放。
  */
@@ -87,7 +86,7 @@ fun StyleSwitcher(
     // 遮罩与面板同步过渡，收起结束时遮罩也刚好归零，不会留下一点暗色残余
     val scrimAlpha by animateFloatAsState(
         targetValue = if (shown) 0.58f else 0f,
-        animationSpec = tween(if (shown) STYLE_SLIDE_IN_MS else STYLE_SLIDE_OUT_MS.toInt()),
+        animationSpec = tween(if (shown) STYLE_FADE_IN_MS else STYLE_FADE_OUT_MS.toInt()),
         label = "styleScrim",
     )
 
@@ -102,7 +101,7 @@ fun StyleSwitcher(
             closing = true
             scope.launch {
                 shown = false
-                delay(STYLE_SLIDE_OUT_MS)
+                delay(STYLE_FADE_OUT_MS)
                 onDismiss()
             }
         }
@@ -126,7 +125,7 @@ fun StyleSwitcher(
                 modifier = Modifier.fillMaxSize().glassBackdropSource(backdrop),
             )
 
-            // 点击面板以外区域关闭：铺满整屏，放在滑动层之外，退出时也始终可点
+            // 点击面板以外区域关闭：铺满整屏，退出时也始终可点
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -139,17 +138,8 @@ fun StyleSwitcher(
 
             AnimatedVisibility(
                 visible = shown,
-                enter = slideInVertically(
-                    initialOffsetY = { height -> height },
-                    animationSpec = tween(STYLE_SLIDE_IN_MS, easing = FastOutSlowInEasing),
-                ),
-                exit = slideOutVertically(
-                    targetOffsetY = { height -> height },
-                    animationSpec = tween(
-                        STYLE_SLIDE_OUT_MS.toInt(),
-                        easing = FastOutLinearInEasing,
-                    ),
-                ),
+                enter = fadeIn(tween(STYLE_FADE_IN_MS, easing = FastOutSlowInEasing)),
+                exit = fadeOut(tween(STYLE_FADE_OUT_MS.toInt(), easing = FastOutSlowInEasing)),
                 modifier = Modifier.fillMaxSize(),
             ) {
                 // AnimatedVisibility 的内容不是 BoxScope：玻璃面板靠这个 Box 贴底

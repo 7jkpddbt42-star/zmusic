@@ -27,7 +27,10 @@ class NetEaseProviderTest {
         }
 
         override fun get(url: String, headers: Map<String, String>): TransportResponse {
-            throw UnsupportedOperationException("NetEaseProvider 只用 post")
+            // 取流的多通道兜底会走明文 GET，测试替身对同一份应答保持一致
+            lastUrl = url
+            lastHeaders = headers
+            return response
         }
     }
 
@@ -189,6 +192,46 @@ class NetEaseProviderTest {
 
         assertTrue(result.isFailure)
         assertEquals(-460, (result.exceptionOrNull() as com.musicbox.app.source.SourceError.Api).code)
+    }
+
+    /** 按请求地址返回不同应答，用于验证多通道降级顺序。 */
+    private class RoutingTransport(
+        private val handler: (String) -> TransportResponse,
+    ) : HttpTransport {
+        val urls = mutableListOf<String>()
+
+        override fun post(url: String, body: String, headers: Map<String, String>): TransportResponse {
+            urls += url
+            return handler(url)
+        }
+
+        override fun get(url: String, headers: Map<String, String>): TransportResponse {
+            urls += url
+            return handler(url)
+        }
+    }
+
+    @Test
+    fun `getStreamUrl falls back to legacy endpoint when v1 is risk controlled`() = runBlocking {
+        val transport = RoutingTransport { url ->
+            if (url.contains("/url/v1")) {
+                TransportResponse(code = 200, body = """{"code":-460,"msg":"cheating"}""")
+            } else {
+                TransportResponse(code = 200, body = songUrlFixture())
+            }
+        }
+        val provider = NetEaseProvider(transport = transport, deviceId = "ABCD")
+
+        val info = provider.getStreamUrl(347368L).getOrThrow()
+
+        assertEquals(320000, info.bitrateBps)
+        assertEquals(
+            listOf(
+                "https://interfacepc.music.163.com/eapi/song/enhance/player/url/v1",
+                "https://interfacepc.music.163.com/eapi/song/enhance/player/url",
+            ),
+            transport.urls,
+        )
     }
 
     // ── MI-3 歌词 ────────────────────────────────────────────────

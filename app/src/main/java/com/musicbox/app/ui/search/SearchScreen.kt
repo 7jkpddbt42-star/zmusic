@@ -100,7 +100,7 @@ fun SearchScreen(
         Entrance(index = 1, modifier = Modifier.weight(1f), animate = animateEntrance) {
             Box(modifier = Modifier.fillMaxSize()) {
                 val showEmpty = state.searched && !state.loading && state.message == null &&
-                    (state.results.isEmpty() || state.noRealMatch)
+                    state.results.isEmpty()
 
                 when {
                     state.loading -> SearchLoading()
@@ -108,6 +108,7 @@ fun SearchScreen(
                     showEmpty -> SearchEmpty(state.noRealMatch)
                     state.results.isNotEmpty() -> SearchResults(
                         results = state.results,
+                        noRealMatch = state.noRealMatch,
                         nowPlayingSongId = nowPlayingSongId,
                         onSongClick = { index ->
                             keyboard?.hide()
@@ -356,13 +357,20 @@ private fun KeywordChip(
 @Composable
 private fun SearchResults(
     results: List<Song>,
+    noRealMatch: Boolean,
     nowPlayingSongId: Long?,
     onSongClick: (Int) -> Unit,
 ) {
     LazyColumn(modifier = Modifier.fillMaxSize()) {
         item(key = "resultHeader") {
+            // 拼音 / 英文缩写查询（如 qingtian）在服务端能搜到中文歌，本地却无法逐字比对，
+            // 以前会被相关性判定整页藏掉。现在结果照常展示，只在顶部说明是相近内容。
             Text(
-                text = "共 ${results.size} 首",
+                text = if (noRealMatch) {
+                    "未完全匹配，以下是相近结果（共 ${results.size} 首）"
+                } else {
+                    "共 ${results.size} 首"
+                },
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
                 modifier = Modifier.padding(start = 20.dp, end = 16.dp, top = 4.dp, bottom = 4.dp),

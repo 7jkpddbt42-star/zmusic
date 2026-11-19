@@ -3,9 +3,8 @@ package com.musicbox.app.ui.player
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
@@ -113,21 +112,12 @@ internal fun NowPlayingBar(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    // 当前歌词行：始终占据一行高度，随行变化上下滚动淡入淡出，避免迷你条抖动
+                    // 当前歌词行：始终占据一行高度，换行时原地交叉淡化，不做上下滚动
                     AnimatedContent(
                         targetState = lyricLine,
                         transitionSpec = {
-                            (
-                                slideInVertically(
-                                    animationSpec = tween(260, easing = FastOutSlowInEasing),
-                                    initialOffsetY = { height -> height },
-                                ) + fadeIn(tween(200))
-                                ) togetherWith (
-                                slideOutVertically(
-                                    animationSpec = tween(260, easing = FastOutSlowInEasing),
-                                    targetOffsetY = { height -> -height },
-                                ) + fadeOut(tween(160))
-                                )
+                            fadeIn(tween(200, easing = FastOutSlowInEasing)) togetherWith
+                                fadeOut(tween(140, easing = FastOutLinearInEasing))
                         },
                         contentAlignment = Alignment.CenterStart,
                         label = "miniLyric",

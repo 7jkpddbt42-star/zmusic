@@ -21,13 +21,10 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
-import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -330,6 +327,7 @@ private fun MusicBoxApp(
     val showTranslationPref by container.settings.showTranslation.collectAsStateWithLifecycle()
     val showRomajiPref by container.settings.showRomaji.collectAsStateWithLifecycle()
     val lyricStylePref by container.settings.lyricStyle.collectAsStateWithLifecycle()
+    val lyricFontSpPref by container.settings.lyricFontSp.collectAsStateWithLifecycle()
     val playerStylePref by container.settings.playerStyle.collectAsStateWithLifecycle()
     val fallbackUrl by container.settings.fallbackBaseUrl.collectAsStateWithLifecycle()
     val freeSourceEnabled by container.settings.freeSourceEnabled.collectAsStateWithLifecycle()
@@ -704,31 +702,13 @@ private fun MusicBoxApp(
                         AnimatedContent(
                             targetState = tab,
                             transitionSpec = {
-                                // 旧页快速淡出并极轻地上浮（视差），新页稍晚淡入、
-                                // 从下方一小段距离浮起。两层只在很短的窗口内重叠，
-                                // 既没有双层文字重影，也不是生硬硬切。
-                                (
-                                    fadeIn(
-                                        tween(260, delayMillis = 50, easing = FastOutSlowInEasing),
-                                    ) + slideInVertically(
-                                        animationSpec = tween(
-                                            durationMillis = 340,
-                                            delayMillis = 50,
-                                            easing = FastOutSlowInEasing,
-                                        ),
-                                        initialOffsetY = { height -> height / 64 },
-                                    )
-                                    togetherWith (
-                                        fadeOut(tween(120, easing = FastOutLinearInEasing)) +
-                                            slideOutVertically(
-                                                animationSpec = tween(
-                                                    durationMillis = 200,
-                                                    easing = FastOutLinearInEasing,
-                                                ),
-                                                targetOffsetY = { height -> -height / 110 },
-                                            )
-                                        )
-                                ).using(SizeTransform(clip = false))
+                                // 只做交叉淡化：旧页渐隐、新页渐显，没有任何位移。
+                                // 旧页先退得快一点，避免两层文字长时间重叠发灰。
+                                fadeIn(
+                                    tween(240, delayMillis = 40, easing = FastOutSlowInEasing),
+                                ) togetherWith fadeOut(
+                                    tween(150, easing = FastOutLinearInEasing),
+                                )
                             },
                             label = "tabSwitch",
                         ) { targetTab ->
@@ -1119,19 +1099,12 @@ private fun MusicBoxApp(
     val playerLayer: @Composable () -> Unit = {
         // 背景模糊档位下发到所有播放页风格；设置在播放页打开时修改也会立即生效
         CompositionLocalProvider(LocalPlayerBackgroundBlur provides backgroundBlurPref.radiusDp.dp) {
-            // 播放页整层：从底部滑入 / 向下滑出，与页面内的下滑收起手势同向。
-            // 只做位移、不做整层淡入：播放层自带不透明背景，滑动时像一张完整的
-            // 页面被推上来，不会出现两层互相透叠的发灰中间态。
+            // 播放页整层：纯淡入淡出，不做位移。
+            // 进入时播放页逐渐显现、主界面同时渐隐；退出反向，全程没有滑动。
             AnimatedVisibility(
                 visible = showPlayer,
-                enter = slideInVertically(
-                    animationSpec = tween(420, easing = FastOutSlowInEasing),
-                    initialOffsetY = { height -> height },
-                ),
-                exit = slideOutVertically(
-                    animationSpec = tween(300, easing = FastOutLinearInEasing),
-                    targetOffsetY = { height -> height },
-                ),
+                enter = fadeIn(tween(260, easing = FastOutSlowInEasing)),
+                exit = fadeOut(tween(200, easing = FastOutLinearInEasing)),
                 label = "playerLayer",
             ) {
                 // 播放页只订阅结构态：位置由进度条逐帧读取。
@@ -1143,14 +1116,12 @@ private fun MusicBoxApp(
                 }.collectAsStateWithLifecycle(initialValue = PlaybackUiState())
                 // 不透明底色：播放页 ↔ 歌词页交叉淡化时不会透出下面的主界面
                 Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
-                    // 播放页 ⇄ 歌词页：歌词页整层从底部滑上来盖住播放页。
-                    // 不做两层互相淡出：两层同时半透明会透出底下的浅色 surface，
-                    // 中途整页发白、播放页缩放还会在四周露出一圈白边。
-                    // 播放页始终不透明留在底层，歌词页向上滑入，视觉上就是网易云/Apple Music 的歌词层。
+                    // 播放页 ⇄ 歌词页：只在透明度上交叉淡化，不做位移动画。
+                    // 播放页始终留在底层不透明，歌词页在上层由透明渐显，退出时渐隐后卸载。
                     val lyricFraction by animateFloatAsState(
                         targetValue = if (showLyric) 1f else 0f,
-                        animationSpec = tween(durationMillis = 380, easing = FastOutSlowInEasing),
-                        label = "lyricSlide",
+                        animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing),
+                        label = "lyricFade",
                     )
                     Box(modifier = Modifier.fillMaxSize()) {
                         PlayerScreen(
@@ -1172,8 +1143,8 @@ private fun MusicBoxApp(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .graphicsLayer {
-                                    val height = size.height
-                                    translationY = (1f - lyricFraction) * height
+                                    // 只动透明度：歌词页原地渐显 / 渐隐，不位移
+                                    alpha = lyricFraction
                                 },
                         ) {
                             LyricScreen(
@@ -1186,6 +1157,7 @@ private fun MusicBoxApp(
                                 showTranslation = showTranslationPref,
                                 showRomaji = showRomajiPref,
                                 lyricStyle = lyricStylePref,
+                                lyricFontSp = lyricFontSpPref,
                                 isPlaying = playState.isPlaying,
                                 onToggleTranslation = {
                                     container.settings.setShowTranslation(!showTranslationPref)
@@ -1254,6 +1226,7 @@ private fun MusicBoxApp(
             showTranslation = showTranslationPref,
             showRomaji = showRomajiPref,
             lyricStyle = lyricStylePref,
+            lyricFontSp = lyricFontSpPref,
             playerStyle = playerStylePref,
             fallbackBaseUrl = fallbackUrl,
             freeSourceEnabled = freeSourceEnabled,
@@ -1279,6 +1252,7 @@ private fun MusicBoxApp(
             onToggleTranslation = container.settings::setShowTranslation,
             onToggleRomaji = container.settings::setShowRomaji,
             onLyricStyle = container.settings::setLyricStyle,
+            onLyricFontSp = container.settings::setLyricFontSp,
             onPlayerStyle = container.settings::setPlayerStyle,
             onSaveFallbackUrl = container.settings::setFallbackBaseUrl,
             onFreeSourceEnabled = { enabled ->
@@ -1553,18 +1527,11 @@ private fun Context.findActivity(): Activity? {
 }
 
 /**
- * 覆盖页统一的进出场：整页从下往上托起一小段，退出更快地落回。
- * 不做整层淡入，避免与下层标签页互相透叠；内容区另有 Entrance 逐块入场，
- * 整页先到位、内容再依次浮现，层次更干净。
+ * 覆盖页统一的进出场：纯淡入淡出。
+ * 旧画面在原处渐隐、覆盖页渐显，不做任何位移动画；退出比进场略快。
  */
 private val OverlayEnter: EnterTransition =
-    slideInVertically(
-        animationSpec = tween(durationMillis = 380, easing = FastOutSlowInEasing),
-        initialOffsetY = { height -> height / 12 },
-    )
+    fadeIn(tween(durationMillis = 240, easing = FastOutSlowInEasing))
 
 private val OverlayExit: ExitTransition =
-    slideOutVertically(
-        animationSpec = tween(durationMillis = 280, easing = FastOutLinearInEasing),
-        targetOffsetY = { height -> height / 12 },
-    )
+    fadeOut(tween(durationMillis = 190, easing = FastOutLinearInEasing))

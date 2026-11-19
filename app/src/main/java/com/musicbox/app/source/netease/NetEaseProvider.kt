@@ -88,53 +88,134 @@ class NetEaseProvider(
     }
 
     override suspend fun getStreamUrl(songId: Long): Result<StreamInfo> = withContext(Dispatchers.IO) {
-        try {
-            val s = session()
-            val header = NetEaseHeader.build(deviceId, s.csrf)
-            val payload = linkedMapOf<String, Any>(
-                // ids 必须是「字符串形式的 JSON 数组」，实测写成数字数组拿不到结果
-                "ids" to "[$songId]",
-                // 实测 exhigh 档位对免费歌给到 320kbps，VIP 歌会自动降级为 standard + 试听片段
-                "level" to streamLevel(),
-                // 实测取 mp3 即可，且 ExoPlayer 吃 mp3 最省事
-                "encodeType" to "mp3",
-                "e_r" to false,
-                "header" to header,
-            )
-            val uri = SONG_URL_URI
-            val params = NetEaseCrypto.eapiParams(uri, gson.toJson(payload))
-            val body = "params=" + URLEncoder.encode(params, "UTF-8")
-            val headers = mapOf(
-                "User-Agent" to NetEaseHeader.UA,
-                "Cookie" to NetEaseHeader.cookieHeader(header, s.musicU),
-                "Referer" to "https://music.163.com",
-            )
-
-            val response = transport.post(EAPI_BASE + uri.replace("/api", "/eapi"), body, headers)
-
-            val dto = try {
-                gson.fromJson(response.body, SongUrlRespDto::class.java)
-            } catch (e: JsonSyntaxException) {
-                throw SourceError.Parse("响应不是合法 JSON", e)
-            } ?: throw SourceError.Parse("响应为空", null)
-
-            if (dto.code != 200) {
-                throw SourceError.Api(dto.code, null)
+        // 网易云会按接口/网络环境做风控：新版 v1 取流接口近期稳定返回 -460，
+        // 单通道会让整首歌直接不可播。这里按「加密新版 → 加密旧版 → 明文新版 → 明文旧版」
+        // 依次尝试，任一通道拿到可播地址即返回，全部失败才把最后一个错误抛给上层。
+        var lastError: Throwable = SourceError.Parse("取流响应缺少 data", null)
+        var unplayable: SourceError.Unplayable? = null
+        val channels = listOf<Pair<String, (Long) -> Result<StreamInfo>>>(
+            "eapi-v1" to ::streamViaEapiV1,
+            "eapi-legacy" to ::streamViaEapiLegacy,
+            "plain-v1" to ::streamViaPlainV1,
+            "plain-legacy" to ::streamViaPlainLegacy,
+        )
+        for ((name, channel) in channels) {
+            val result = try {
+                channel(songId)
+            } catch (e: SourceError) {
+                Result.failure(e)
+            } catch (e: Exception) {
+                // 传输层异常（含测试替身未实现的通道）一律当网络错误，继续试下一条
+                Result.failure(SourceError.Network(e))
             }
-
-            val first = dto.data?.firstOrNull()
-                ?: throw SourceError.Parse("取流响应缺少 data", null)
-            val info = first.toStreamInfo()
-                ?: throw SourceError.Unplayable("当前歌曲暂无可用播放地址")
-
-            Result.success(info)
-        } catch (e: SourceError) {
-            appLog?.log("netease", "getStreamUrl 失败 code=${(e as? SourceError.Api)?.code ?: "-"}", e)
-            Result.failure(e)
-        } catch (e: IOException) {
-            appLog?.log("netease", "getStreamUrl 网络异常", e)
-            Result.failure(SourceError.Network(e))
+            val info = result.getOrNull()
+            if (info != null) {
+                if (name != "eapi-v1") {
+                    appLog?.log("netease", "getStreamUrl 通道降级命中 $name songId=$songId")
+                }
+                return@withContext Result.success(info)
+            }
+            val error = result.exceptionOrNull() ?: lastError
+            if (error is SourceError.Unplayable && unplayable == null) unplayable = error
+            lastError = error
+            appLog?.log("netease", "getStreamUrl 通道 $name 失败 songId=$songId", error)
         }
+        // 有通道明确说「这首歌没有可播地址」时优先返回它，比笼统的网络错误更准确
+        Result.failure(unplayable ?: lastError)
+    }
+
+    /** 通道 1：新版加密取流（接口带 level，登录态下音质最好）。 */
+    private fun streamViaEapiV1(songId: Long): Result<StreamInfo> {
+        val s = session()
+        val header = NetEaseHeader.build(deviceId, s.csrf)
+        val payload = linkedMapOf<String, Any>(
+            // ids 必须是「字符串形式的 JSON 数组」，实测写成数字数组拿不到结果
+            "ids" to "[$songId]",
+            "level" to streamLevel(),
+            "encodeType" to "mp3",
+            "e_r" to false,
+            "header" to header,
+        )
+        return parseStream(eapiPost(SONG_URL_V1_URI, payload, header, s.musicU))
+    }
+
+    /** 通道 2：旧版加密取流（只认 br，不受新版 v1 的 -460 风控影响）。 */
+    private fun streamViaEapiLegacy(songId: Long): Result<StreamInfo> {
+        val s = session()
+        val header = NetEaseHeader.build(deviceId, s.csrf)
+        val payload = linkedMapOf<String, Any>(
+            "ids" to "[$songId]",
+            "br" to legacyBitrate(streamLevel()),
+            "e_r" to false,
+            "header" to header,
+        )
+        return parseStream(eapiPost(SONG_URL_LEGACY_URI, payload, header, s.musicU))
+    }
+
+    /** 通道 3：明文新版接口（不走 eapi 签名，实测可绕过 -460 风控）。 */
+    private fun streamViaPlainV1(songId: Long): Result<StreamInfo> {
+        val s = session()
+        val header = NetEaseHeader.build(deviceId, s.csrf)
+        val url = PLAIN_BASE + SONG_URL_V1_URI +
+            "?ids=" + URLEncoder.encode("[$songId]", "UTF-8") +
+            "&level=" + URLEncoder.encode(streamLevel(), "UTF-8") +
+            "&encodeType=mp3"
+        return parseStream(transport.get(url, plainHeaders(header, s.musicU)).body)
+    }
+
+    /** 通道 4：明文旧版接口，最后的兜底。 */
+    private fun streamViaPlainLegacy(songId: Long): Result<StreamInfo> {
+        val s = session()
+        val header = NetEaseHeader.build(deviceId, s.csrf)
+        val url = PLAIN_BASE + SONG_URL_LEGACY_URI +
+            "?ids=" + URLEncoder.encode("[$songId]", "UTF-8") +
+            "&br=" + legacyBitrate(streamLevel())
+        return parseStream(transport.get(url, plainHeaders(header, s.musicU)).body)
+    }
+
+    /** eapi 签名 + POST，返回应答正文。 */
+    private fun eapiPost(
+        uri: String,
+        payload: Map<String, Any>,
+        header: Map<String, String>,
+        musicU: String?,
+    ): String {
+        val params = NetEaseCrypto.eapiParams(uri, gson.toJson(payload))
+        val body = "params=" + URLEncoder.encode(params, "UTF-8")
+        val headers = mapOf(
+            "User-Agent" to NetEaseHeader.UA,
+            "Cookie" to NetEaseHeader.cookieHeader(header, musicU),
+            "Referer" to "https://music.163.com",
+        )
+        return transport.post(EAPI_BASE + uri.replace("/api", "/eapi"), body, headers).body
+    }
+
+    /** 明文接口同样携带同一组 header Cookie，避免被当成无身份请求。 */
+    private fun plainHeaders(header: Map<String, String>, musicU: String?): Map<String, String> = mapOf(
+        "User-Agent" to NetEaseHeader.UA,
+        "Cookie" to NetEaseHeader.cookieHeader(header, musicU),
+        "Referer" to "https://music.163.com",
+    )
+
+    private fun parseStream(body: String): Result<StreamInfo> {
+        val dto = try {
+            gson.fromJson(body, SongUrlRespDto::class.java)
+        } catch (e: JsonSyntaxException) {
+            throw SourceError.Parse("响应不是合法 JSON", e)
+        } ?: throw SourceError.Parse("响应为空", null)
+
+        if (dto.code != 200) throw SourceError.Api(dto.code, null)
+
+        val info = dto.data?.firstOrNull()?.toStreamInfo()
+            ?: throw SourceError.Unplayable("当前歌曲暂无可用播放地址")
+        return Result.success(info)
+    }
+
+    /** 设置里的档位名 → 旧版接口的 br 参数。 */
+    private fun legacyBitrate(level: String): Int = when (level) {
+        "standard" -> 128_000
+        "higher" -> 192_000
+        else -> 320_000
     }
 
     override suspend fun getLyric(songId: Long): Result<LyricData> = withContext(Dispatchers.IO) {
@@ -197,10 +278,15 @@ class NetEaseProvider(
 
     private companion object {
         const val EAPI_BASE = "https://interfacepc.music.163.com"
+
+        /** 明文接口所在域名（不走 eapi 签名）。 */
+        const val PLAIN_BASE = "https://music.163.com"
+
         const val SEARCH_URI = "/api/cloudsearch/pc"
         const val SEARCH_PAGE_SIZE = 30
 
-        const val SONG_URL_URI = "/api/song/enhance/player/url/v1"
+        const val SONG_URL_V1_URI = "/api/song/enhance/player/url/v1"
+        const val SONG_URL_LEGACY_URI = "/api/song/enhance/player/url"
 
         const val LYRIC_URI = "/api/song/lyric/v1"
 

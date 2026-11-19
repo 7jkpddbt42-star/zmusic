@@ -8,6 +8,7 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -93,6 +94,14 @@ private val DESKTOP_LYRIC_COLORS: List<Int> = listOf(
     0xFFFF9EC7.toInt(),
 )
 
+/** 歌词页字号档位：标签 → 正文字号（sp），与 [com.musicbox.app.data.SettingsRepository] 的默认值对应。 */
+private val LYRIC_FONT_OPTIONS = listOf(
+    "小" to 20,
+    "标准" to 26,
+    "大" to 30,
+    "特大" to 34,
+)
+
 private val WALLPAPER_AVAILABLE = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
 
 @Composable
@@ -100,6 +109,7 @@ fun SettingsScreen(
     showTranslation: Boolean,
     showRomaji: Boolean,
     lyricStyle: LyricStyle,
+    lyricFontSp: Int,
     playerStyle: PlayerStyle,
     fallbackBaseUrl: String,
     freeSourceEnabled: Boolean,
@@ -122,6 +132,7 @@ fun SettingsScreen(
     onToggleTranslation: (Boolean) -> Unit,
     onToggleRomaji: (Boolean) -> Unit,
     onLyricStyle: (LyricStyle) -> Unit,
+    onLyricFontSp: (Int) -> Unit,
     onPlayerStyle: (PlayerStyle) -> Unit,
     onSaveFallbackUrl: (String) -> Unit,
     onFreeSourceEnabled: (Boolean) -> Unit,
@@ -229,12 +240,10 @@ fun SettingsScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .verticalScroll(rememberScrollState())
-                        .padding(horizontal = 18.dp, vertical = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(28.dp),
+                        .padding(horizontal = 14.dp, vertical = 14.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
-            SettingsGroup {
-                Text("外观", style = MaterialTheme.typography.titleMedium)
-
+            SettingsGroup(title = "外观") {
                 Text(
                     "主题模式",
                     style = MaterialTheme.typography.bodyMedium,
@@ -336,8 +345,7 @@ fun SettingsScreen(
             }
 
             
-            SettingsGroup {
-                Text("液态玻璃", style = MaterialTheme.typography.titleMedium)
+            SettingsGroup(title = "液态玻璃") {
                 Button(
                     onClick = onOpenGlassDemo,
                     modifier = Modifier.padding(top = 8.dp),
@@ -345,8 +353,7 @@ fun SettingsScreen(
             }
 
             
-            SettingsGroup {
-                Text("背景", style = MaterialTheme.typography.titleMedium)
+            SettingsGroup(title = "背景") {
                 Text(
                     backgroundLabel,
                     style = MaterialTheme.typography.bodyMedium,
@@ -377,8 +384,7 @@ fun SettingsScreen(
             }
 
             
-            SettingsGroup {
-                Text("播放", style = MaterialTheme.typography.titleMedium)
+            SettingsGroup(title = "播放") {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -389,8 +395,7 @@ fun SettingsScreen(
             }
 
             
-            SettingsGroup {
-                Text("音效", style = MaterialTheme.typography.titleMedium)
+            SettingsGroup(title = "音效") {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -453,8 +458,7 @@ fun SettingsScreen(
             }
 
             
-            SettingsGroup {
-                Text("歌词", style = MaterialTheme.typography.titleMedium)
+            SettingsGroup(title = "歌词") {
 
                 Text(
                     "歌词样式",
@@ -464,6 +468,17 @@ fun SettingsScreen(
                 Row(modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
                     ChoiceChip("聚焦", lyricStyle == LyricStyle.Focus) { onLyricStyle(LyricStyle.Focus) }
                     ChoiceChip("经典", lyricStyle == LyricStyle.Classic) { onLyricStyle(LyricStyle.Classic) }
+                }
+
+                Text(
+                    "歌词字号",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(top = 12.dp),
+                )
+                Row(modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
+                    LYRIC_FONT_OPTIONS.forEach { (label, sp) ->
+                        ChoiceChip(label, lyricFontSp == sp) { onLyricFontSp(sp) }
+                    }
                 }
 
                 Row(
@@ -480,8 +495,7 @@ fun SettingsScreen(
             }
 
             
-            SettingsGroup {
-                Text("播放页", style = MaterialTheme.typography.titleMedium)
+            SettingsGroup(title = "播放页") {
                 Text(
                     "播放页风格",
                     style = MaterialTheme.typography.bodyMedium,
@@ -501,8 +515,7 @@ fun SettingsScreen(
             }
 
             
-            SettingsGroup {
-                Text("桌面歌词", style = MaterialTheme.typography.titleMedium)
+            SettingsGroup(title = "桌面歌词") {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -534,8 +547,7 @@ fun SettingsScreen(
             }
 
             
-            SettingsGroup {
-                Text("音源", style = MaterialTheme.typography.titleMedium)
+            SettingsGroup(title = "音源") {
                 Text(
                     "音质",
                     style = MaterialTheme.typography.bodyMedium,
@@ -560,8 +572,7 @@ fun SettingsScreen(
             }
 
             
-            SettingsGroup {
-                Text("备用音源地址", style = MaterialTheme.typography.titleMedium)
+            SettingsGroup(title = "备用音源地址") {
                 OutlinedTextField(
                     value = urlDraft,
                     onValueChange = { urlDraft = it },
@@ -576,8 +587,7 @@ fun SettingsScreen(
             }
 
             
-            SettingsGroup {
-                Text("缓存", style = MaterialTheme.typography.titleMedium)
+            SettingsGroup(title = "缓存") {
 
                 Text("歌词缓存：$lyricCacheCount 首", modifier = Modifier.padding(top = 12.dp))
                 Button(onClick = onClearLyricCache, modifier = Modifier.padding(top = 8.dp)) {
@@ -594,8 +604,7 @@ fun SettingsScreen(
             }
 
             
-            SettingsGroup {
-                Text("备份与恢复", style = MaterialTheme.typography.titleMedium)
+            SettingsGroup(title = "备份与恢复") {
                 Text(
                     "本机收藏 $backupLikedCount 首 · 播放记录 $backupHistoryCount 条",
                     style = MaterialTheme.typography.bodyMedium,
@@ -612,8 +621,7 @@ fun SettingsScreen(
             }
 
             
-            SettingsGroup {
-                Text("错误日志", style = MaterialTheme.typography.titleMedium)
+            SettingsGroup(title = "错误日志") {
                 Row(modifier = Modifier.padding(top = 8.dp)) {
                     TextButton(onClick = { showLog = true }) { Text("查看") }
                     TextButton(onClick = onClearLog) { Text("清空") }
@@ -648,15 +656,35 @@ private fun formatBytes(bytes: Long): String = when {
 }
 
 /**
- * 设置页分组：整页共用外层那一块玻璃，分组本身只排内容，
- * 不再各自挂 drawBackdrop（滚动时只有一块玻璃参与采样/折射）。
+ * 设置页分组卡片：每组独立成块，标题 + 分隔线 + 内容，统一圆角与内边距。
+ * 只用半透明表面色区分层次，不额外挂液体玻璃——整页已有一块玻璃，
+ * 再叠加十份全幅模糊会让滚动掉帧。
  */
 @Composable
 private fun SettingsGroup(
+    title: String,
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    Column(modifier = modifier.fillMaxWidth(), content = content)
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(22.dp),
+        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.07f)),
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            HorizontalDivider(
+                modifier = Modifier.padding(top = 10.dp, bottom = 2.dp),
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.07f),
+            )
+            content()
+        }
+    }
 }
 
 /** 单个可选项胶囊。选中高亮，禁用置灰。 */

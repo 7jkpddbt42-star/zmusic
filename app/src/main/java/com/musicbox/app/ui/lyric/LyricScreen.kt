@@ -71,19 +71,24 @@ import kotlin.math.abs
 /** 歌词页文字基准色：页面使用与播放页一致的真实背景 + 压暗遮罩，文字固定白色系。 */
 private val Ink = Color.White
 
+/** 字号基准：设置里的 23sp 对应 1.0 倍，其余字号按同一比例缩放。 */
+private const val BASE_LYRIC_FONT_SP = 23f
+
 /** 聚焦样式：所有行统一按当前行字号排版，非当前行整体缩小（缩放只走图层，不重排文字）。 */
-private val FocusLineStyle = TextStyle(
-    fontSize = 23.sp,
-    lineHeight = 33.sp,
+private fun focusLineStyle(scale: Float) = TextStyle(
+    fontSize = 23.sp * scale,
+    lineHeight = 33.sp * scale,
     fontWeight = FontWeight.SemiBold,
     letterSpacing = 0.3.sp,
 )
 
 /** 当前行的译文：比正文小一号但保证清晰可读（英文歌词的中文翻译尤其需要）。 */
-private val FocusTranslationStyle = TextStyle(fontSize = 16.sp, lineHeight = 24.sp)
+private fun focusTranslationStyle(scale: Float) =
+    TextStyle(fontSize = 16.sp * scale, lineHeight = 24.sp * scale)
 
 /** 罗马音：辅助信息，保持在译文下一档。 */
-private val FocusRomajiStyle = TextStyle(fontSize = 14.sp, lineHeight = 20.sp)
+private fun focusRomajiStyle(scale: Float) =
+    TextStyle(fontSize = 14.sp * scale, lineHeight = 20.sp * scale)
 
 /**
  * 逐字歌词页。动画由 [rememberFramePosition] 的逐帧时钟驱动（设计文档 §5.2），
@@ -111,6 +116,7 @@ internal fun LyricScreen(
     showTranslation: Boolean,
     showRomaji: Boolean,
     lyricStyle: LyricStyle,
+    lyricFontSp: Int,
     isPlaying: Boolean,
     onToggleTranslation: () -> Unit,
     onToggleRomaji: () -> Unit,
@@ -224,6 +230,8 @@ internal fun LyricScreen(
             }
 
             Box(modifier = Modifier.weight(1f)) {
+                // 设置里的字号换算成相对基准的倍数，正文、译文、罗马音一起缩放
+                val fontScale = lyricFontSp / BASE_LYRIC_FONT_SP
                 when (val s = state) {
                     is LyricUiState.Ready -> when (lyricStyle) {
                         LyricStyle.Focus -> FocusedLyricList(
@@ -231,6 +239,7 @@ internal fun LyricScreen(
                             source = source,
                             showTranslation = showTranslation,
                             showRomaji = showRomaji,
+                            fontScale = fontScale,
                             onLineClick = onSeek,
                             modifier = Modifier.fillMaxSize(),
                         )
@@ -240,6 +249,7 @@ internal fun LyricScreen(
                             source = source,
                             showTranslation = showTranslation,
                             showRomaji = showRomaji,
+                            fontScale = fontScale,
                             onLineClick = onSeek,
                             modifier = Modifier.fillMaxSize(),
                         )
@@ -310,6 +320,7 @@ private fun FocusedLyricList(
     source: PositionSource,
     showTranslation: Boolean,
     showRomaji: Boolean,
+    fontScale: Float,
     onLineClick: (Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -355,6 +366,7 @@ private fun FocusedLyricList(
                     livePosition = if (index == active) position else null,
                     showTranslation = showTranslation,
                     showRomaji = showRomaji,
+                    fontScale = fontScale,
                     onClick = { onLineClick(line.startMs) },
                 )
             }
@@ -372,9 +384,10 @@ private fun FocusedLyricRow(
     livePosition: State<Long>?,
     showTranslation: Boolean,
     showRomaji: Boolean,
+    fontScale: Float,
     onClick: () -> Unit,
 ) {
-    // 目标缩放：当前行 1.0（23sp），相邻行约 16.5sp，更远行再略小
+    // 目标缩放：当前行按设置字号完整显示，相邻行缩小到约七成，更远行再略小
     val targetScale = when {
         isActive -> 1f
         distance == 1 -> 0.72f
@@ -430,7 +443,7 @@ private fun FocusedLyricRow(
                         livePosition = livePosition,
                         baseColor = baseColor,
                         fillColor = fillColor,
-                        style = FocusLineStyle,
+                        style = focusLineStyle(fontScale),
                         alpha = 1f,
                     )
                 }
@@ -439,7 +452,7 @@ private fun FocusedLyricRow(
             // LRC 降级：整行高亮（设计文档 §5.3）
             Text(
                 text = line.text,
-                style = FocusLineStyle,
+                style = focusLineStyle(fontScale),
                 color = if (isActive) Ink else Ink.copy(alpha = 0.92f),
                 textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth(),
@@ -449,7 +462,7 @@ private fun FocusedLyricRow(
         if (showTranslation && !line.translation.isNullOrBlank()) {
             Text(
                 text = line.translation!!,
-                style = FocusTranslationStyle,
+                style = focusTranslationStyle(fontScale),
                 color = Ink.copy(alpha = 0.70f),
                 textAlign = TextAlign.Center,
                 modifier = Modifier
@@ -460,7 +473,7 @@ private fun FocusedLyricRow(
         if (showRomaji && !line.romaji.isNullOrBlank()) {
             Text(
                 text = line.romaji!!,
-                style = FocusRomajiStyle,
+                style = focusRomajiStyle(fontScale),
                 color = Ink.copy(alpha = 0.55f),
                 textAlign = TextAlign.Center,
                 modifier = Modifier
@@ -478,6 +491,7 @@ private fun ClassicLyricList(
     source: PositionSource,
     showTranslation: Boolean,
     showRomaji: Boolean,
+    fontScale: Float,
     onLineClick: (Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -511,6 +525,7 @@ private fun ClassicLyricList(
                 livePosition = if (isActive) position else null,
                 showTranslation = showTranslation,
                 showRomaji = showRomaji,
+                fontScale = fontScale,
                 onClick = { onLineClick(line.startMs) },
             )
         }
@@ -527,6 +542,7 @@ private fun ClassicLyricLineRow(
     livePosition: State<Long>?,
     showTranslation: Boolean,
     showRomaji: Boolean,
+    fontScale: Float,
     onClick: () -> Unit,
 ) {
     // 深色渐变底上固定白系：当前行未唱部分淡、非当前行更灰，填充色仍用主题色
@@ -541,9 +557,15 @@ private fun ClassicLyricLineRow(
     // 当前行整体轻微放大；行级过渡允许用 animateFloatAsState（非逐帧）
     val scale by animateFloatAsState(targetValue = if (isActive) 1.02f else 1f, label = "lineScale")
     val style: TextStyle = if (isActive) {
-        MaterialTheme.typography.titleLarge.copy(fontSize = 22.sp, lineHeight = 32.sp)
+        MaterialTheme.typography.titleLarge.copy(
+            fontSize = 22.sp * fontScale,
+            lineHeight = 32.sp * fontScale,
+        )
     } else {
-        MaterialTheme.typography.bodyLarge.copy(fontSize = 17.sp, lineHeight = 26.sp)
+        MaterialTheme.typography.bodyLarge.copy(
+            fontSize = 17.sp * fontScale,
+            lineHeight = 26.sp * fontScale,
+        )
     }
 
     Column(
@@ -582,7 +604,10 @@ private fun ClassicLyricLineRow(
         if (showTranslation && !line.translation.isNullOrBlank()) {
             Text(
                 text = line.translation!!,
-                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 15.sp, lineHeight = 22.sp),
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    fontSize = 15.sp * fontScale,
+                    lineHeight = 22.sp * fontScale,
+                ),
                 color = Ink.copy(alpha = if (isActive) 0.9f else 0.5f),
                 modifier = Modifier.padding(top = 2.dp),
             )
@@ -590,7 +615,7 @@ private fun ClassicLyricLineRow(
         if (showRomaji && !line.romaji.isNullOrBlank()) {
             Text(
                 text = line.romaji!!,
-                style = MaterialTheme.typography.labelSmall,
+                style = MaterialTheme.typography.labelSmall.copy(fontSize = 12.sp * fontScale),
                 color = Ink.copy(alpha = if (isActive) 0.75f else 0.4f),
                 modifier = Modifier.padding(top = 2.dp),
             )

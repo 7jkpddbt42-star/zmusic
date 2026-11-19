@@ -53,6 +53,13 @@ class SettingsRepository(private val store: KeyValueStore) {
         MutableStateFlow(LyricStyle.fromKey(store.getString(KEY_LYRIC_STYLE)))
     val lyricStyle: StateFlow<LyricStyle> = _lyricStyle.asStateFlow()
 
+    /** 歌词正文字号（sp）。默认 26 略大于旧版 23，用户可在设置里再调。 */
+    private val _lyricFontSp = MutableStateFlow(
+        store.getInt(KEY_LYRIC_FONT_SP, DEFAULT_LYRIC_FONT_SP)
+            .coerceIn(MIN_LYRIC_FONT_SP, MAX_LYRIC_FONT_SP),
+    )
+    val lyricFontSp: StateFlow<Int> = _lyricFontSp.asStateFlow()
+
     private val _playerStyle =
         MutableStateFlow(PlayerStyle.fromKey(store.getString(KEY_PLAYER_STYLE)))
     val playerStyle: StateFlow<PlayerStyle> = _playerStyle.asStateFlow()
@@ -132,6 +139,12 @@ class SettingsRepository(private val store: KeyValueStore) {
     fun setLyricStyle(value: LyricStyle) {
         store.putString(KEY_LYRIC_STYLE, value.key)
         _lyricStyle.value = value
+    }
+
+    fun setLyricFontSp(value: Int) {
+        val clamped = value.coerceIn(MIN_LYRIC_FONT_SP, MAX_LYRIC_FONT_SP)
+        store.putInt(KEY_LYRIC_FONT_SP, clamped)
+        _lyricFontSp.value = clamped
     }
 
     fun setPlayerStyle(value: PlayerStyle) {
@@ -338,6 +351,7 @@ class SettingsRepository(private val store: KeyValueStore) {
         const val KEY_TRANSLATION = "show_translation"
         const val KEY_ROMAJI = "show_romaji"
         const val KEY_LYRIC_STYLE = "lyric_style"
+        const val KEY_LYRIC_FONT_SP = "lyric_font_sp"
         const val KEY_PLAYER_STYLE = "player_style"
         const val KEY_FALLBACK_URL = "fallback_base_url"
         const val KEY_FREE_SOURCE = "free_source_enabled"
@@ -378,6 +392,11 @@ class SettingsRepository(private val store: KeyValueStore) {
         const val DEFAULT_DESKTOP_LYRIC_FONT_SP = 20
         const val POSITION_UNSET = Int.MIN_VALUE
         val DEFAULT_DESKTOP_LYRIC_COLOR = 0xFFFFFFFF.toInt()
+
+        /** 歌词页正文字号范围与默认值（sp）。 */
+        const val DEFAULT_LYRIC_FONT_SP = 26
+        const val MIN_LYRIC_FONT_SP = 16
+        const val MAX_LYRIC_FONT_SP = 40
 
         /** 倍速范围 0.5x–2.0x；默认 1.0x。 */
         const val DEFAULT_SPEED_PERCENT = 100

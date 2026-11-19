@@ -19,12 +19,16 @@ class SongStreamCache(
 
     fun get(songId: Long): StreamInfo? = synchronized(entries) {
         val entry = entries[songId] ?: return null
-        if (entry.expiresAtMs <= clock()) {
-            entries.remove(songId)
-            return null
-        }
+        if (entry.expiresAtMs <= clock()) return null
         entry.info
     }
+
+    /**
+     * 取「可能已过期」的地址：所有取流通道都失败时用它兜底。
+     * 网易云直链的 expi 实测 1200 秒，而缓存 TTL 只有 10 分钟，
+     * 刚过期的地址通常还能再撑几分钟，比直接报错跳过整首歌体验好。
+     */
+    fun getStale(songId: Long): StreamInfo? = synchronized(entries) { entries[songId]?.info }
 
     fun put(songId: Long, info: StreamInfo) = synchronized(entries) {
         entries[songId] = Entry(info, clock() + ttlMs)

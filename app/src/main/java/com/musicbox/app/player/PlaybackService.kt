@@ -423,10 +423,17 @@ class PlaybackService : MediaSessionService() {
         sharedSongStreamCache.get(songId)?.let { return Uri.parse(it.url) }
 
         val info = runBlocking { resolveWithRetry(songId) }
-            ?: throw IOException("取流失败 songId=$songId")
+        if (info != null) {
+            sharedSongStreamCache.put(songId, info)
+            return Uri.parse(info.url)
+        }
 
-        sharedSongStreamCache.put(songId, info)
-        return Uri.parse(info.url)
+        // 所有通道都失败：退回最近一次取到的直链。缓存里的地址即使刚过 TTL，
+        // CDN 侧通常仍未真正失效，能救回「网络抖一下整首歌被跳过」的情况。
+        sharedSongStreamCache.getStale(songId)?.let { stale ->
+            return Uri.parse(stale.url)
+        }
+        throw IOException("取流失败 songId=$songId")
     }
 
     /**

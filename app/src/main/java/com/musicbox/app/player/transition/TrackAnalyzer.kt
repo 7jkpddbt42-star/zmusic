@@ -92,8 +92,18 @@ class TrackAnalyzer {
                 when (val outputIndex = codec.dequeueOutputBuffer(info, TIMEOUT_US)) {
                     MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
                         val out = codec.outputFormat
-                        channels = out.getInteger(MediaFormat.KEY_CHANNEL_COUNT, 1).coerceAtLeast(1)
-                        sampleRate = out.getInteger(MediaFormat.KEY_SAMPLE_RATE, sampleRate)
+                        // getInteger(key, default) 是 API 29 才有的重载，minSdk 26 上会直接抛
+                        // NoSuchMethodError；先 containsKey 再取单参版本，低版本同样可用。
+                        channels = if (out.containsKey(MediaFormat.KEY_CHANNEL_COUNT)) {
+                            out.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
+                        } else {
+                            1
+                        }.coerceAtLeast(1)
+                        sampleRate = if (out.containsKey(MediaFormat.KEY_SAMPLE_RATE)) {
+                            out.getInteger(MediaFormat.KEY_SAMPLE_RATE)
+                        } else {
+                            sampleRate
+                        }
                         pcmEncoding = if (out.containsKey(MediaFormat.KEY_PCM_ENCODING)) {
                             out.getInteger(MediaFormat.KEY_PCM_ENCODING)
                         } else {

@@ -234,7 +234,7 @@ internal fun PlayerScreen(
                 }
             }
 
-            // 菜单与队列抽屉共用同一套底部玻璃面板，滑入/收起动画一致
+            // 菜单与队列抽屉共用同一套底部玻璃面板，淡入/收起动画一致
             if (morePanelVisible) {
                 PlayerMoreSheet(
                     speed = state.speed,

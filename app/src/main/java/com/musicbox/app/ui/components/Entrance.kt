@@ -10,17 +10,14 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 
 private const val START_DELAY_MS = 40L
 private const val STAGGER_MS = 45L
-private const val DURATION_MS = 360
-private val ENTRANCE_OFFSET = 26.dp
+private const val DURATION_MS = 320
 
 /**
- * 板块入场动效：淡入 + 自下而上滑入，按 [index] 依次错开，形成整页"逐块浮现"。
+ * 板块入场动效：只有淡入，按 [index] 依次错开，形成整页"逐块浮现"，没有任何位移。
  *
  * 性能：动画只在 [graphicsLayer] 的 layer lambda 里读取进度，只失效绘制/图层阶段，
  * 不触发重组，也不影响内部玻璃面板对背景源的采样。
@@ -37,7 +34,6 @@ fun Entrance(
     // 初始是否播放只在实例创建时判定一次，后续 recomposition 不改变已开始的动画
     val animateOnCreate = remember { animate }
     val progress = remember { Animatable(if (animateOnCreate) 0f else 1f) }
-    val distance = with(LocalDensity.current) { ENTRANCE_OFFSET.toPx() }
 
     LaunchedEffect(Unit) {
         if (!animateOnCreate) return@LaunchedEffect
@@ -53,7 +49,6 @@ fun Entrance(
             .fillMaxWidth()
             .graphicsLayer {
                 alpha = progress.value
-                translationY = (1f - progress.value) * distance
             },
         content = { content() },
     )

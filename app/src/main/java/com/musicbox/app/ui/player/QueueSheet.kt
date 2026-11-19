@@ -1,12 +1,11 @@
 package com.musicbox.app.ui.player
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -71,11 +70,11 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
-/** 抽屉打开：自下而上滑入。 */
-private const val QUEUE_SLIDE_IN_MS = 340
+/** 抽屉打开：原地淡入。 */
+private const val QUEUE_FADE_IN_MS = 220
 
-/** 抽屉收起：下滑离场，比进场略快。 */
-private const val QUEUE_SLIDE_OUT_MS = 260
+/** 抽屉收起：淡出离场，比进场略快。 */
+private const val QUEUE_FADE_OUT_MS = 180
 
 /** 睡眠定时档位：文案 → 分钟数（0 关闭，-1 播完当前这首）。 */
 private val SLEEP_OPTIONS = listOf(
@@ -96,11 +95,11 @@ private const val QUEUE_BACKDROP_WARMUP_FRAMES = 2
 /**
  * 队列抽屉：查看 / 删除 / 切换播放模式。
  *
- * 交互是自下而上的抽屉：底部滑入、点击遮罩或返回键收起。
+ * 交互是底部抽屉：原地淡入、点击遮罩或返回键收起，全程不做位移动画。
  *
  * 液态玻璃仍然是实时渲染：窗口内自带真实背景源（视频/图片/封面）并持续录制，
  * 抽屉玻璃每帧采样这层背景，拖动队列时折射与模糊跟手变化。
- * 打开前先空跑几帧让背景源完成首帧录制（预热），因此滑入的第一帧就有玻璃质感，
+ * 打开前先空跑几帧让背景源完成首帧录制（预热），因此淡入的第一帧就有玻璃质感，
  * 不会出现「先是一块纯色、过一帧才变玻璃」的闪变。
  */
 @Composable
@@ -132,15 +131,15 @@ internal fun QueueSheet(
     var rowHeightPx by remember { mutableFloatStateOf(0f) }
     val fallbackRowHeightPx = with(LocalDensity.current) { 62.dp.toPx() }
 
-    // 遮罩随抽屉一起过渡：进场 340ms、退场 260ms，与抽屉滑出同帧结束，
-    // 避免抽屉已滑走、遮罩还剩一点暗色导致关闭瞬间闪一下。
+    // 遮罩随抽屉一起过渡：进场 220ms、退场 180ms，与抽屉淡出同帧结束，
+    // 避免抽屉已消失、遮罩还剩一点暗色导致关闭瞬间闪一下。
     val scrimAlpha by animateFloatAsState(
         targetValue = if (shown) 0.58f else 0f,
-        animationSpec = tween(if (shown) QUEUE_SLIDE_IN_MS else QUEUE_SLIDE_OUT_MS),
+        animationSpec = tween(if (shown) QUEUE_FADE_IN_MS else QUEUE_FADE_OUT_MS),
         label = "queueScrim",
     )
 
-    // 预热：先让背景源绘制几帧再触发滑入，玻璃首帧就是真实折射
+    // 预热：先让背景源绘制几帧再触发淡入，玻璃首帧就是真实折射
     LaunchedEffect(Unit) {
         repeat(QUEUE_BACKDROP_WARMUP_FRAMES) { withFrameNanos { } }
         shown = true
@@ -152,7 +151,7 @@ internal fun QueueSheet(
             closing = true
             scope.launch {
                 shown = false
-                delay(QUEUE_SLIDE_OUT_MS.toLong())
+                delay(QUEUE_FADE_OUT_MS.toLong())
                 onDismiss()
             }
         }
@@ -178,14 +177,8 @@ internal fun QueueSheet(
 
             AnimatedVisibility(
                 visible = shown,
-                enter = slideInVertically(
-                    initialOffsetY = { height -> height },
-                    animationSpec = tween(QUEUE_SLIDE_IN_MS, easing = FastOutSlowInEasing),
-                ),
-                exit = slideOutVertically(
-                    targetOffsetY = { height -> height },
-                    animationSpec = tween(QUEUE_SLIDE_OUT_MS, easing = FastOutLinearInEasing),
-                ),
+                enter = fadeIn(tween(QUEUE_FADE_IN_MS, easing = FastOutSlowInEasing)),
+                exit = fadeOut(tween(QUEUE_FADE_OUT_MS, easing = FastOutSlowInEasing)),
                 modifier = Modifier.fillMaxSize(),
             ) {
                 Box(modifier = Modifier.fillMaxSize()) {

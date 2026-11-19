@@ -31,7 +31,8 @@ class SongStreamCacheTest {
 
         now += 2L
         assertNull(cache.get(1L))
-        assertEquals(0, cache.size())
+        // 过期条目不再参与正常命中，但保留下来供「所有通道都失败」时兜底
+        assertEquals(full, cache.getStale(1L))
     }
 
     @Test
@@ -42,6 +43,7 @@ class SongStreamCacheTest {
         cache.clear()
 
         assertNull(cache.get(1L))
+        assertNull(cache.getStale(1L))
         assertEquals(0, cache.size())
     }
 
